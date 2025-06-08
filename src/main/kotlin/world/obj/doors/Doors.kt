@@ -14,6 +14,8 @@ object Doors {
     val closedToOpen: Map<Int, Int> = mapOf(
         1533 to 1534,
         1530 to 1531,
+        1551 to 1551,
+        1553 to 1553,
     )
 
     /**
@@ -40,7 +42,7 @@ object Doors {
             if (nextDoorId != -1) nextDoorId else inactiveDoor.id,
             inactiveDoor.position,
             ObjectType.STRAIGHT_WALL,
-            if (inactiveDoor.direction == ObjectDirection.NORTH) ObjectDirection.EAST else ObjectDirection.SOUTH,
+            calcNewDirection(inactiveDoor.direction),
             ChunkUpdatableView.globalView())
         world.addObject(activeDoorObj)
         activeDoors.put(inactiveDoor.position, Pair(inactiveDoor, activeDoorObj))
@@ -56,5 +58,15 @@ object Doors {
         val closedDoorDynamicObj = GameObject.createDynamic(ctx, closedObj.id, closedObj.position, closedObj.objectType, closedObj.direction, ChunkUpdatableView.globalView())
         world.addObject(closedDoorDynamicObj)
         activeDoors.remove(openDoor.position)
+    }
+
+    fun calcNewDirection(initialDirection: ObjectDirection): ObjectDirection {
+        return when (initialDirection) {
+            ObjectDirection.SOUTH -> ObjectDirection.EAST
+            ObjectDirection.NORTH -> ObjectDirection.EAST
+            ObjectDirection.EAST -> ObjectDirection.SOUTH
+            ObjectDirection.WEST -> ObjectDirection.SOUTH
+            else -> ObjectDirection.EAST
+        }
     }
 }

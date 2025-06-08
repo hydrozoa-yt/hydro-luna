@@ -9,8 +9,10 @@ Doors.closedToOpen.forEach(
         object1(key) {
             handleDoorClick(gameObject, plr)
         }
-        object1(value) {
-            handleDoorClick(gameObject, plr)
+        if (key != value) {
+            object1(value) {
+                handleDoorClick(gameObject, plr)
+            }
         }
     }
 )
