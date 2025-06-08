@@ -296,4 +296,22 @@ on(ServerLaunchEvent::class) {
         id = 5,
         x = 3236,
         y = 3203)
+
+    // goblins east of river
+    world.addNpc(
+        id = 100,
+        x = 3255,
+        y = 3230)
+
+    // spiders east of river
+    world.addNpc(
+        id = 59,
+        x = 3249,
+        y = 3229)
+
+    // cow
+    world.addNpc(
+        id = 81,
+        x = 3257,
+        y = 3259)
 }
