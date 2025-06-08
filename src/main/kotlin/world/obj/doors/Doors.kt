@@ -11,41 +11,50 @@ object Doors {
     /**
      * Map of closed door ids mapped to their corresponding open door
      */
-    val nextDoor: Map<Int, Int> = mapOf(
+    val closedToOpen: Map<Int, Int> = mapOf(
         1533 to 1534,
         1530 to 1531,
     )
 
     /**
-     * Map of open doors mapped by their position, each entry is a pair of the closed door static object and the open door dynamic object.
+     * Map of open door ids mapped to their corresponding closed door
      */
-    val openDoors: MutableMap<Position, Pair<GameObject, GameObject>> = mutableMapOf()
+    val openToClosed: Map<Int, Int> = closedToOpen.entries.associate { (key, value) ->
+        value to key
+    }
 
-    fun openDoor(world: World, closedDoor: GameObject) {
+    /**
+     * Map of activated doors mapped by their position, each entry is a pair of the initial door static object and the activated door dynamic object.
+     */
+    val activeDoors: MutableMap<Position, Pair<GameObject, GameObject>> = mutableMapOf()
+
+    fun activateDoor(world: World, inactiveDoor: GameObject) {
         var nextDoorId: Int = -1
-        if (nextDoor.contains(closedDoor.id)) {
-            nextDoorId = nextDoor.get(closedDoor.id)!!
+        if (closedToOpen.contains(inactiveDoor.id)) {
+            nextDoorId = closedToOpen.get(inactiveDoor.id)!!
+        } else if (openToClosed.contains(inactiveDoor.id)) {
+            nextDoorId = openToClosed.get(inactiveDoor.id)!!
         }
-        val openDoorObj = GameObject.createDynamic(
+        val activeDoorObj = GameObject.createDynamic(
             ctx,
-            if (nextDoorId != -1) nextDoorId else closedDoor.id,
-            closedDoor.position,
+            if (nextDoorId != -1) nextDoorId else inactiveDoor.id,
+            inactiveDoor.position,
             ObjectType.STRAIGHT_WALL,
-            ObjectDirection.SOUTH,
+            if (inactiveDoor.direction == ObjectDirection.NORTH) ObjectDirection.EAST else ObjectDirection.SOUTH,
             ChunkUpdatableView.globalView())
-        world.addObject(openDoorObj) // test
-        openDoors.put(closedDoor.position, Pair(closedDoor, openDoorObj))
+        world.addObject(activeDoorObj)
+        activeDoors.put(inactiveDoor.position, Pair(inactiveDoor, activeDoorObj))
     }
 
     fun closeDoor(world: World, openDoor: GameObject) {
-        if (!openDoors.contains(openDoor.position)) {
+        if (!activeDoors.contains(openDoor.position)) {
             return
         }
-        val doorEntry = openDoors.get(openDoor.position)!!
+        val doorEntry = activeDoors.get(openDoor.position)!!
         val closedObj = doorEntry.first
 
         val closedDoorDynamicObj = GameObject.createDynamic(ctx, closedObj.id, closedObj.position, closedObj.objectType, closedObj.direction, ChunkUpdatableView.globalView())
         world.addObject(closedDoorDynamicObj)
-        openDoors.remove(openDoor.position)
+        activeDoors.remove(openDoor.position)
     }
 }
