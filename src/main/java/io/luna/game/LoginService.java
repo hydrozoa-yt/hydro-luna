@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-import static io.luna.util.ThreadUtils.awaitTerminationUninterruptibly;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitTerminationUninterruptibly;
 import static org.apache.logging.log4j.util.Unbox.box;
 
 /**
@@ -90,6 +90,12 @@ public final class LoginService extends AuthenticationService<LoginRequest> {
 
     @Override
     boolean addRequest(String username, LoginRequest request) {
+        if(world.getPlayerMap().containsKey(username) ||
+                world.getLogoutService().isSavePending(username)) {
+            // Short-circuit here, faster and prevents wasting resources.
+            request.client.sendLoginResponse(request.player, LoginResponse.ACCOUNT_ONLINE);
+            return false;
+        }
         logger.trace("Sending {}'s login request to a worker...", username);
         Callable<Boolean> loadTask = startWorker(username, request);
         loadMap.putIfAbsent(username, workers.submit(loadTask));

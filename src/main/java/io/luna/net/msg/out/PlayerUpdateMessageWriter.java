@@ -34,19 +34,17 @@ public final class PlayerUpdateMessageWriter extends GameMessageWriter {
      */
     private final AbstractUpdateBlockSet<Player> blockSet = new PlayerUpdateBlockSet();
 
-
     @Override
     public ByteMessage write(Player player) {
         ByteMessage msg = ByteMessage.message(90, MessageType.VAR_SHORT);
         ByteMessage blockMsg = ByteMessage.raw();
-
         try {
             msg.startBitAccess();
             handleMovement(player, msg, true);
             blockSet.encode(player, blockMsg, UpdateState.UPDATE_SELF);
 
-            msg.putBits(8, player.getLocalPlayers().size());
-            Iterator<Player> iterator = player.getLocalPlayers().iterator();
+            msg.putBits(8, player.getUpdatePlayers().size());
+            Iterator<Player> iterator = player.getUpdatePlayers().iterator();
             while (iterator.hasNext()) {
                 Player other = iterator.next();
                 if (other.isViewableFrom(player) && other.getState() == EntityState.ACTIVE && !other.isTeleporting()) {
@@ -56,21 +54,29 @@ public final class PlayerUpdateMessageWriter extends GameMessageWriter {
                     msg.putBit(true);
                     msg.putBits(2, 3);
                     iterator.remove();
+                    player.getLocalPlayers().remove(other);
+                    if (player.isBot() && !other.isBot()) {
+                        player.asBot().getLocalHumans().remove(other);
+                    }
                 }
             }
 
             ChunkManager chunks = player.getWorld().getChunks();
             int playersAdded = 0;
             for (Player other : chunks.findUpdateMobs(player, Player.class)) {
-                if (playersAdded == 15 || player.getLocalPlayers().size() >= 255) {
+                if (playersAdded == 15 || player.getUpdatePlayers().size() >= 255) {
                     break;
                 }
                 if (player.equals(other) || other.getState() != EntityState.ACTIVE) {
                     continue;
                 }
 
-                if (other.getPosition().isViewable(player.getPosition()) && player.getLocalPlayers().add(other)) {
+                if (other.getPosition().isViewable(player.getPosition()) && player.getUpdatePlayers().add(other)) {
                     playersAdded++;
+                    player.getLocalPlayers().add(other);
+                    if (player.isBot() && !other.isBot()) {
+                        player.asBot().getLocalHumans().add(other);
+                    }
                     addPlayer(msg, player, other);
                     blockSet.encode(other, blockMsg, UpdateState.ADD_LOCAL);
                 }
@@ -111,7 +117,7 @@ public final class PlayerUpdateMessageWriter extends GameMessageWriter {
      */
     private void handleMovement(Player player, ByteMessage msg, boolean updateTeleport) {
         boolean needsUpdate = !player.getFlags().isEmpty();
-        if(updateTeleport && player.getFlags().size() == 1 && player.getFlags().get(UpdateFlag.CHAT)) {
+        if (updateTeleport && player.getFlags().size() == 1 && player.getFlags().get(UpdateFlag.CHAT)) {
             // Needs update needs to be false if were only forcing chat
             needsUpdate = false;
         }

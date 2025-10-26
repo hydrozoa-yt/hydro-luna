@@ -1,11 +1,11 @@
 package io.luna.game.model;
 
 import com.google.common.base.MoreObjects;
+import game.player.Sounds;
 import io.luna.LunaContext;
 import io.luna.game.model.chunk.ChunkUpdatableMessage;
 import io.luna.game.model.chunk.ChunkUpdatableView;
 import io.luna.net.msg.out.AddLocalSoundMessageWriter;
-import world.player.Sounds;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -26,18 +26,25 @@ public final class LocalSound extends LocalEntity {
      */
     private final int volume;
 
+    // todo builder...
     public LocalSound(LunaContext context, int id, Position position, ChunkUpdatableView view, int radius, int volume) {
         super(context, id, EntityType.SOUND, position, view);
         checkState(volume >= 0 && volume <= 100, "Volume must be between 0-100.");
         this.radius = radius;
         this.volume = volume;
     }
+
     public LocalSound(LunaContext context, Sounds sound, Position position, ChunkUpdatableView view, int radius, int volume) {
         super(context, sound.getId(), EntityType.SOUND, position, view);
         checkState(volume >= 0 && volume <= 100, "Volume must be between 0-100.");
         this.radius = radius;
         this.volume = volume;
     }
+
+    public LocalSound(LunaContext context, Sounds sound, Position position, ChunkUpdatableView view) {
+        this(context, sound, position, view, Position.VIEWING_DISTANCE / 2, 100);
+    }
+
     @Override
     public ChunkUpdatableMessage displayMessage(int offset) {
         return new AddLocalSoundMessageWriter(id, radius, volume, offset);

@@ -1,5 +1,6 @@
 package io.luna.net.msg.in;
 
+import game.player.Sounds;
 import io.luna.LunaContext;
 import io.luna.game.event.impl.DropItemEvent;
 import io.luna.game.model.chunk.ChunkUpdatableView;
@@ -15,7 +16,6 @@ import io.luna.net.msg.GameMessageReader;
 import io.luna.util.logging.LoggingSettings.FileOutputType;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Logger;
-import world.player.Sounds;
 
 import static org.apache.logging.log4j.util.Unbox.box;
 
@@ -25,6 +25,7 @@ import static org.apache.logging.log4j.util.Unbox.box;
  * @author lare96
  */
 public final class DropItemMessageReader extends GameMessageReader<DropItemEvent> {
+// todo engine plugin
 
     /**
      * An asynchronous logger that will handle item drop logs.
@@ -68,6 +69,7 @@ public final class DropItemMessageReader extends GameMessageReader<DropItemEvent
         dropItem(player.getContext(), player, inventoryItem, itemDef, event);
         logger.log(ITEM_DROP, "{}: {}(x{})", player.getUsername(), itemDef.getName(), box(inventoryItem.getAmount()));
     }
+    // TODO engine plugin
 
     /**
      * Drops {@code inventoryItem} if it's tradeable, otherwise opens the {@link DestroyItemDialogueInterface}.
@@ -79,7 +81,7 @@ public final class DropItemMessageReader extends GameMessageReader<DropItemEvent
      */
     private void dropItem(LunaContext ctx, Player player, Item inventoryItem, ItemDefinition itemDef, DropItemEvent event) {
         if (itemDef.isTradeable() && !itemDef.getInventoryActions().contains("Destroy")) {
-            GroundItem groundItem = new GroundItem(ctx, inventoryItem.getId(), inventoryItem.getAmount(),
+            GroundItem groundItem = new GroundItem(ctx, inventoryItem,
                     player.getPosition(), ChunkUpdatableView.localView(player));
             if (ctx.getWorld().getItems().register(groundItem)) {
                 player.getInventory().set(event.getIndex(), null);

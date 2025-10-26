@@ -1,11 +1,14 @@
 package io.luna.game.model.item;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.ImmutableSet;
 import io.luna.game.model.def.EquipmentDefinition;
 import io.luna.game.model.def.ItemDefinition;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.util.NoSuchElementException;
+import java.util.Comparator;
 import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -15,8 +18,17 @@ import static com.google.common.base.Preconditions.checkArgument;
  *
  * @author lare96
  */
-public final class Item {
+public class Item {
 
+    private static final Logger logger = LogManager.getLogger();
+
+
+    /**
+     * Comparator used to sort dropped items by their in-game value. The sorting is performed in descending order
+     * (high → low) using the unnoted item definition’s base value.
+     */
+    public static final Comparator<Item> VALUE_COMPARATOR = Comparator.<Item>comparingInt(it ->
+            it.getUnnotedItemDef().getValue()).reversed();
     /**
      * A set of search restricted items that don't show up in {@link #byName(String)} queries.
      */
@@ -30,11 +42,11 @@ public final class Item {
      * @return The item.
      */
     public static Item byName(String name, int amount) {
-        boolean noted = name.endsWith("(noted)");
-        return ItemDefinition.ALL.lookup(it -> !SEARCH_RESTRICTED.contains(it.getId()) && it.isTradeable() &&
-                        it.getName().equals(name) && it.isNoted() == noted).
-                map(it -> new Item(it.getId(), amount)).
-                orElseThrow(() -> new NoSuchElementException("Item (" + name + ") was not valid or found."));
+        Integer id = findId(name, false);
+        if (id == null) {
+            return null;
+        }
+        return new Item(id, amount);
     }
 
     /**
@@ -45,6 +57,35 @@ public final class Item {
      */
     public static Item byName(String name) {
         return byName(name, 1);
+    }
+
+
+    /**
+     * Retrieves an item instance by name and with wn amount of 1.
+     *
+     * @param name The name.
+     * @return The item.
+     */
+    public static Item byNameNoted(String name, int amount) {
+        return byName(name, 1);
+    }
+
+    /**
+     * Retrieves an item instance by name and with wn amount of 1.
+     *
+     * @param name The name.
+     * @return The item.
+     */
+    public static Integer findId(String name, boolean noted) {
+        // TODO Map every item definition by name to make this quicker, and factor in search restricted items.
+        // TODO use tonote for notes
+        return ItemDefinition.ALL.lookup(it -> !SEARCH_RESTRICTED.contains(it.getId()) && it.isTradeable() &&
+                        it.getName().equals(name) && it.isNoted() == noted).
+                map(ItemDefinition::getId).
+                orElseGet(() -> {
+                    logger.warn("Item ({}) was not valid or found.", name);
+                    return null;
+                });
     }
 
     /**
@@ -96,9 +137,14 @@ public final class Item {
 
     @Override
     public String toString() {
-        return MoreObjects.toStringHelper(this).
-                add("id", id).
-                add("amount", amount).toString();
+        ItemDefinition def = getItemDef();
+        ToStringHelper helper = MoreObjects.toStringHelper(this).
+                add("id", id);
+        if (def != null) {
+            helper.add("name", def.getName());
+        }
+        helper.add("amount", amount);
+        return helper.toString();
     }
 
     /**
@@ -179,12 +225,40 @@ public final class Item {
     }
 
     /**
+     * Creates a new {@link IndexedItem} with the same id and amount.
+     *
+     * @param index The index.
+     * @return The indexed item.
+     */
+    public IndexedItem withIndex(int index) {
+        return new IndexedItem(index, id, amount);
+    }
+
+    /**
      * @return The unnoted item definition of this item. If this item definition is already unnoted, returns the same value as
      * {@link #getItemDef()}.
      */
     public ItemDefinition getUnnotedItemDef() {
         ItemDefinition current = getItemDef();
-        return current.getUnnotedId().isPresent() ? ItemDefinition.ALL.retrieve(current.getUnnotedId().getAsInt()) : current;
+        return current.getUnnotedId().isPresent() ? ItemDefinition.ALL.retrieve(current.getUnnotedId().getAsInt())
+                : current;
+    }
+
+    /**
+     * Checks if this item is the {@link DynamicItem} type.
+     *
+     * @return {@code} if this item has attributes.
+     */
+    public boolean isDynamic() {
+        return this instanceof DynamicItem;
+    }
+
+    /**
+     * Casts this item to {@link DynamicItem} type. Check if this item is dynamic using
+     * {@link #isDynamic()} first.
+     */
+    public DynamicItem asDynamic() {
+        return (DynamicItem) this;
     }
 
     /**

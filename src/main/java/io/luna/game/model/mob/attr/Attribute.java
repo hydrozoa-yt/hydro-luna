@@ -3,54 +3,28 @@ package io.luna.game.model.mob.attr;
 import com.google.common.base.CharMatcher;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.TypeAdapter;
-import io.luna.game.model.mob.Player;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import io.luna.game.model.Entity;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 /**
- * A model representing metadata for a attribute value.
+ * Represents a serializable, optionally persistent attribute associated with a type (e.g., {@link Entity}).
  *
+ * <p>Attributes wrap a value of type {@code T} and optionally declare a persistence key, allowing
+ * them to be stored and retrieved across sessions using JSON serialization. Each persistent key must be
+ * unique.</p>
+ *
+ * @param <T> The value type of the attribute.
  * @author lare96
  */
 public final class Attribute<T> {
 
     /**
-     * The map of specialized persisted types.
-     */
-    private static final Map<Class<?>, TypeAdapter<?>> specialTypes = new ConcurrentHashMap<>();
-
-    /**
-     * The JSON serializer.
+     * Global Gson instance used for (de)serialization.
      */
     private static volatile Gson serializer = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
-
-    /**
-     * Adds a specialized type that can be persisted.
-     *
-     * @param typeClass The class of the type.
-     * @param typeAdapter The type adapter.
-     */
-    public static <E> void addSpecialType(GsonBuilder builder, Class<E> typeClass, TypeAdapter<E> typeAdapter) {
-        specialTypes.put(typeClass, typeAdapter);
-        builder.registerTypeAdapter(typeClass, typeAdapter);
-    }
-
-    /**
-     * Determines if {@code typeClass} is a special type.
-     *
-     * @param typeClass The type to check.
-     * @return {@code true} if a special type.
-     */
-    public static boolean isSpecialType(Class<?> typeClass) {
-        return specialTypes.containsKey(typeClass);
-    }
-
 
     /**
      * Sets the new JSON serializer.
@@ -67,22 +41,22 @@ public final class Attribute<T> {
     }
 
     /**
-     * The initial value.
+     * The default or initial value of the attribute.
      */
     private final T initialValue;
 
     /**
-     * The value class.
+     * The runtime class of the attribute's value.
      */
     private final Class<T> valueType;
 
     /**
-     * The persistence key, if permanently saved.
+     * Optional persistence key, uniquely identifying this attribute when saving/loading.
      */
     private String persistenceKey;
 
     /**
-     * Creates a new {@link Attribute}.
+     * Creates a new non-null {@link Attribute} from a concrete value.
      *
      * @param initialValue The initial value.
      */
@@ -92,10 +66,10 @@ public final class Attribute<T> {
     }
 
     /**
-     * Creates a new {@link Attribute} that might not have an initial value.
+     * Creates a new {@link Attribute} with an optional initial value.
      *
      * @param type The type of the value.
-     * @param initialValue The initial value, possibly {@code null}.
+     * @param initialValue The initial value (nullable).
      */
     public Attribute(Class<T> type, T initialValue) {
         this.initialValue = initialValue;
@@ -103,11 +77,11 @@ public final class Attribute<T> {
     }
 
     /**
-     * Makes this attribute save permanently to a {@link Player}'s character under {@code persistenceKey}. Attributes
-     * cannot share the same key.
+     * Marks this attribute to be saved to character files using the given key. Keys must be lowercase, non-empty,
+     * and without whitespace or '@'.
      *
-     * @param persistenceKey The name for this attribute.
-     * @return This attribute.
+     * @param persistenceKey The unique identifier for persistent storage.
+     * @return This attribute instance for chaining.
      */
     public Attribute<T> persist(String persistenceKey) {
         checkArgument(!persistenceKey.isEmpty(), "Persistent attribute keys must not be empty.");
@@ -123,7 +97,7 @@ public final class Attribute<T> {
     }
 
     /**
-     * Does the same thing as {@link #persist(String)}, but does not add it to the persistent key set.
+     * Assigns the persistence key directly (internal use only).
      */
     Attribute<T> setPersistenceKey(String persistenceKey) {
         this.persistenceKey = persistenceKey;

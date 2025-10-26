@@ -1,10 +1,11 @@
 package io.luna.game;
 
 import com.google.common.base.Stopwatch;
+import com.google.common.util.concurrent.Uninterruptibles;
+import io.luna.game.LogoutService.LogoutRequest;
 import io.luna.game.model.World;
 import io.luna.game.model.mob.Player;
 import io.luna.game.persistence.PlayerData;
-import io.luna.game.LogoutService.LogoutRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -13,9 +14,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.Future;
+import java.util.concurrent.CountDownLatch;
 
-import static io.luna.util.ThreadUtils.awaitTerminationUninterruptibly;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitTerminationUninterruptibly;
 import static org.apache.logging.log4j.util.Unbox.box;
 
 /**
@@ -33,7 +34,7 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
     /**
      * The maximum duration that a player can stay in the logout queue for.
      */
-    private static final Duration FORCE_LOGOUT_THRESHOLD = Duration.ofHours(1);
+    private static final Duration FORCE_LOGOUT_THRESHOLD = Duration.ofMinutes(1);
 
     /**
      * The login request model.
@@ -49,6 +50,11 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
          * The player's client.
          */
         private Instant timeoutAt;
+
+        /**
+         * The synchronization object.
+         */
+        private final CountDownLatch latch = new CountDownLatch(1);
 
         /**
          * Creates a new {@link LoginService.LoginRequest}.
@@ -72,13 +78,21 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
         private boolean isTimeout() {
             return timeoutAt != null && Instant.now().isAfter(timeoutAt);
         }
+
+        public void complete() {
+            latch.countDown();
+        }
+
+        public void waitForCompletion() {
+            Uninterruptibles.awaitUninterruptibly(latch);
+        }
     }
 
     /**
      * A set of players pending saves. Used to ensure that a login cannot occur until the player's data is done being
      * saved.
      */
-    private final Map<String, Future<?>> saves = new LinkedHashMap<>();
+    private final Map<String, LogoutRequest> saves = new LinkedHashMap<>();
 
     /**
      * Creates a new {@link LogoutService}.
@@ -103,15 +117,16 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
     @Override
     boolean canFinishRequest(String username, LogoutRequest request) {
         Player player = request.player;
-
-        return (/* TODO No combat for 30 seconds && */ player.getControllers().checkLogout() && !player.isLocked()) ||
+        return (/* TODO No combat for 30 seconds && */player.getControllers().checkLogout() && !player.isLocked()) ||
                 request.isTimeout();
     }
 
     @Override
     void finishRequest(String username, LogoutRequest request) {
+        PlayerData saveData = request.player.createSaveData();
         world.getPlayers().remove(request.player);
-        saves.put(username, startWorker(username, request.player));
+        saves.put(username, request);
+        startWorker(username, request, saveData);
         logger.info("{} has logged out.", username);
     }
 
@@ -130,18 +145,18 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
      * @param request The player being saved.
      * @return The result of the save.
      */
-    private Future<?> startWorker(String username, Player request) {
+    private void startWorker(String username, LogoutRequest request, PlayerData saveData) {
         logger.trace("Servicing {}'s logout request...", username);
-        PlayerData saveData = request.createSaveData();
-        return workers.submit(() -> {
+        workers.submit(() -> {
             try {
                 Stopwatch timer = Stopwatch.createStarted();
-                world.getSerializerManager().getSerializer().savePlayer(world, request.getUsername(), saveData);
+                world.getSerializerManager().getSerializer().savePlayer(world, username, saveData);
                 logger.debug("Finished saving {}'s data (took {}ms).", username, box(timer.elapsed().toMillis()));
             } catch (Exception e) {
                 logger.error(new ParameterizedMessage("Issue servicing {}'s logout request!", username), e);
             } finally {
                 saves.remove(username);
+                request.complete();
             }
         });
     }
@@ -153,6 +168,17 @@ public final class LogoutService extends AuthenticationService<LogoutRequest> {
      * @return {@code true} if their data is being saved.
      */
     public boolean isSavePending(String username) {
-        return saves.containsKey(username);
+        return saves.containsKey(username) || hasRequest(username);
+    }
+
+    public void waitForSave(String username) {
+        LogoutRequest request = pending.get(username);
+        if (request != null) {
+            request.waitForCompletion();
+        }
+        request = saves.get(username);
+        if (request != null) {
+            request.waitForCompletion();
+        }
     }
 }

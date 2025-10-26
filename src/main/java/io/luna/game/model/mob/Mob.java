@@ -7,15 +7,13 @@ import io.luna.game.model.Direction;
 import io.luna.game.model.Entity;
 import io.luna.game.model.EntityType;
 import io.luna.game.model.Position;
-import io.luna.game.model.mob.MobDeathTask.NpcDeathTask;
-import io.luna.game.model.mob.MobDeathTask.PlayerDeathTask;
 import io.luna.game.model.mob.block.Animation;
 import io.luna.game.model.mob.block.Graphic;
 import io.luna.game.model.mob.block.Hit;
 import io.luna.game.model.mob.block.UpdateFlagSet;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
 import io.luna.game.task.Task;
-import world.player.Sounds;
+import game.player.Sounds;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -133,6 +131,11 @@ public abstract class Mob extends Entity {
     private boolean locked;
 
     /**
+     * If a teleportation is in progress.
+     */
+    protected boolean teleporting;
+
+    /**
      * Creates a new {@link Mob}.
      *
      * @param context The context instance.
@@ -200,8 +203,8 @@ public abstract class Mob extends Entity {
         if (hp.getLevel() > 0) {
             hp.setLevel(amount);
             if (hp.getLevel() <= 0) {
-                world.schedule(type == EntityType.PLAYER ? new PlayerDeathTask(asPlr()) :
-                        new NpcDeathTask(asNpc()));
+                Mob source = null; // TODO compute source after combat is done
+                world.schedule(new MobDeathTask(this, source));
             }
         }
     }
@@ -247,15 +250,6 @@ public abstract class Mob extends Entity {
                 }
             });
         }
-    }
-
-    /**
-     * Follows the target {@link Mob}.
-     *
-     * @param target The target.
-     */
-    public void follow(Mob target) {
-        submitAction(new MobFollowAction(this, target));
     }
 
     /**
@@ -488,6 +482,7 @@ public abstract class Mob extends Entity {
     public final void resetFlags() {
         Direction defaultDirection = this instanceof Npc ? asNpc().getDefaultDirection().orElse(null) : null;
         reset();
+        teleporting = false;
         animation = Optional.empty();
         forcedChat = Optional.empty();
         facePosition = defaultDirection == null ? Optional.empty() :
@@ -707,5 +702,12 @@ public abstract class Mob extends Entity {
      */
     public int getZ() {
         return position.getZ();
+    }
+
+    /**
+     * @return {@code true} if a teleportation is in progress.
+     */
+    public boolean isTeleporting() {
+        return teleporting;
     }
 }

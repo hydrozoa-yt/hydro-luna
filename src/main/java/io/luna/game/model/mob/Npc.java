@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 /**
  * A model representing a non-player-controlled mob.
  *
@@ -52,6 +54,12 @@ public class Npc extends Mob {
     private boolean respawn;
 
     /**
+     * The NPC wander radius.
+     */
+    private int wanderRadius; // TODO NPC wandering
+    private int respawnTicks = -1;
+
+    /**
      * Creates a new {@link Npc}.
      *
      * @param context The context instance.
@@ -72,6 +80,11 @@ public class Npc extends Mob {
 
         // Set position.
         setPosition(position);
+    }
+
+    @Override
+    public void onTeleport(Position newPosition) {
+        teleporting = true;
     }
 
     @Override
@@ -255,7 +268,7 @@ public class Npc extends Mob {
     /**
      * @return The combat definition.
      */
-    public Optional<NpcCombatDefinition> getCombatDefinition() {
+    public Optional<NpcCombatDefinition> getCombatDef() {
         return combatDefinition;
     }
 
@@ -294,6 +307,34 @@ public class Npc extends Mob {
      */
     public Npc setRespawning() {
         respawn = true;
+        return this;
+    }
+
+    public void setRespawnTicks(int respawnTicks) {
+        this.respawnTicks = respawnTicks;
+    }
+
+    public int getRespawnTicks() {
+        return respawnTicks;
+    }
+
+    /**
+     * Forces this NPC to start wandering. This will undo its current {@link #defaultDirection}. The radius must be
+     * 0 or above.
+     *
+     * @return This instance, for chaining.
+     */
+    public Npc setWandering(int radius) {
+        checkArgument(radius >= 0, "Radius must be 0 or above.");
+        if (wanderRadius != radius) { // only change if different from current
+            if (radius == 0) { // TODO wandering code
+                // cancel wander action
+            } else {
+                // start or modify "action"
+            }
+
+            setDefaultDirection(Optional.empty());
+        }
         return this;
     }
 }

@@ -122,7 +122,7 @@ public final class MobList<E extends Mob> implements Iterable<E> {
 
         // Initialize the index cache.
         this.indexes = IntStream.rangeClosed(1, capacity).boxed()
-            .collect(Collectors.toCollection(() -> new ArrayDeque<>(capacity)));
+                .collect(Collectors.toCollection(() -> new ArrayDeque<>(capacity)));
     }
 
     @Override
@@ -219,18 +219,15 @@ public final class MobList<E extends Mob> implements Iterable<E> {
 
     /**
      * Attempts to remove {@code mob}. <strong>Do not use this to remove players. Use {@link Player#logout()} to send the
-     * logout packet or use {@link Player#disconnect()} to disconnect the player.</strong>
+     * logout packet or use {@link Player#forceLogout()} to forcibly and safely disconnect the player.</strong>
      *
      * @param mob The mob to remove.
      */
     public void remove(E mob) {
         checkArgument(mob.getIndex() != -1, "index == -1");
 
-        if (mob.getType() == EntityType.NPC) {
-            mob.setState(EntityState.INACTIVE);
-        } else if (mob.getType() == EntityType.PLAYER) {
-            checkState(mob.asPlr().getState() == EntityState.INACTIVE,
-                "Player must be inactive. Use Player#logout.");
+        mob.setState(EntityState.INACTIVE);
+        if (mob.getType() == EntityType.PLAYER) {
             world.removePlayer(mob.asPlr());
         }
 

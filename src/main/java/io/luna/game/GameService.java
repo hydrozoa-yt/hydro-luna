@@ -1,5 +1,6 @@
 package io.luna.game;
 
+import api.bot.GameCoroutineScope;
 import com.google.common.util.concurrent.AbstractScheduledService;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
@@ -14,24 +15,21 @@ import io.luna.game.model.World;
 import io.luna.game.model.mob.Player;
 import io.luna.game.task.Task;
 import io.luna.net.msg.out.SystemUpdateMessageWriter;
-import io.luna.util.AsyncExecutor;
 import io.luna.util.ExecutorUtils;
-import io.luna.util.ThreadUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import static com.google.common.util.concurrent.Futures.getUnchecked;
-import static io.luna.util.ThreadUtils.awaitTerminationUninterruptibly;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitTerminationUninterruptibly;
 import static org.apache.logging.log4j.util.Unbox.box;
 
 /**
@@ -62,6 +60,8 @@ public final class GameService extends AbstractScheduledService {
         public void running() {
             // Start the game world and run startup logic from Kotlin scripts.
             sync(() -> {
+                thread = Thread.currentThread();
+
                 world.start();
                 runKotlinTasks(ServerLaunchEvent::new, "Waiting for {} Kotlin startup task(s) to complete...");
 
@@ -133,6 +133,11 @@ public final class GameService extends AbstractScheduledService {
     private final ListeningExecutorService fastPool;
 
     /**
+     * An instance of this thread (the game thread).
+     */
+    private volatile Thread thread;
+
+    /**
      * Creates a new {@link GameService}.
      *
      * @param context The context instance.
@@ -148,7 +153,7 @@ public final class GameService extends AbstractScheduledService {
 
     @Override
     protected void runOneIteration() {
-        loop();
+        process();
     }
 
     @Override
@@ -168,13 +173,13 @@ public final class GameService extends AbstractScheduledService {
     /**
      * Runs the entire game loop including synchronization tasks.
      */
-    private void loop() {
+    private void process() {
         try {
             // Do stuff from other threads.
             runSynchronizationTasks();
 
             // Run the main game loop.
-            world.loop();
+            world.process();
         } catch (Exception e) {
             logger.catching(e);
         }
@@ -205,17 +210,17 @@ public final class GameService extends AbstractScheduledService {
      * @param eventFunction Produces the event message to pass.
      * @param waitingMessage The message to log while waiting for tasks to complete.
      */
-    private <E extends Event> void runKotlinTasks(Function<AsyncExecutor, E> eventFunction, String waitingMessage) {
-        AsyncExecutor executor = new AsyncExecutor(ThreadUtils.cpuCount(), "BackgroundLoaderThread");
-        context.getPlugins().lazyPost(eventFunction.apply(executor)).forEach(Runnable::run);
-        try {
-            int count = executor.getTaskCount();
-            if (count > 0) {
-                logger.info(waitingMessage, box(count));
-                executor.await(true);
-            }
-        } catch (ExecutionException e) {
-            throw new CompletionException(e.getCause());
+    private <E extends Event> void runKotlinTasks(Function<ListeningExecutorService, E> eventFunction,
+                                                  String waitingMessage) {
+        ListeningExecutorService pool = ExecutorUtils.threadPool("BackgroundLoaderThread");
+        List<Runnable> tasks = context.getPlugins().lazyPost(eventFunction.apply(pool));
+
+        int count = tasks.size();
+        if (count > 0) {
+            tasks.forEach(Runnable::run);
+            pool.shutdown();
+            logger.info(waitingMessage, box(count));
+            awaitTerminationUninterruptibly(pool);
         }
     }
 
@@ -229,6 +234,9 @@ public final class GameService extends AbstractScheduledService {
         var world = context.getWorld();
         var loginService = world.getLoginService();
         var logoutService = world.getLogoutService();
+
+        // Stop all coroutines.
+        GameCoroutineScope.INSTANCE.shutdown();
 
         // Run last minute game tasks from other threads.
         runSynchronizationTasks();
@@ -363,5 +371,12 @@ public final class GameService extends AbstractScheduledService {
      */
     public CountDownLatch getSynchronizer() {
         return synchronizer;
+    }
+
+    /**
+     * @return An instance of this thread (game thread).
+     */
+    public Thread getThread() {
+        return thread;
     }
 }

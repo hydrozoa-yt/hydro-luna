@@ -3,6 +3,7 @@ package io.luna.game.model.def;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import game.player.QuestJournalInterface;
 import io.luna.game.event.impl.WidgetItemClickEvent;
 import io.luna.net.msg.out.InventoryOverlayMessageWriter;
 import io.luna.net.msg.out.WidgetAnimationMessageWriter;
@@ -12,7 +13,6 @@ import io.luna.net.msg.out.WidgetItemsMessageWriter;
 import io.luna.net.msg.out.WidgetMobModelMessageWriter;
 import io.luna.net.msg.out.WidgetTextMessageWriter;
 import io.luna.net.msg.out.WidgetVisibilityMessageWriter;
-import world.player.QuestJournalInterface;
 
 import static java.util.Objects.requireNonNull;
 
@@ -69,7 +69,7 @@ public final class WidgetDefinition implements Definition {
          * Holds item models similar to {@link #ITEMS_WITH_ACTIONS}. Seems to only be used by the trading and
          * dueling interfaces.
          */
-        UNKNOWN(7),
+        UNKNOWN(7), // todo item list? find out more from interface editor
 
         /**
          * Holds a string of text on a fullscreen interface. Can be modified with {@link WidgetTextMessageWriter}.

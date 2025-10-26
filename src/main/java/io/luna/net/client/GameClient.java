@@ -1,5 +1,7 @@
 package io.luna.net.client;
 
+import io.luna.game.LogoutService;
+import io.luna.game.LogoutService.LogoutRequest;
 import io.luna.game.model.mob.Player;
 import io.luna.net.msg.GameMessage;
 import io.luna.net.msg.GameMessageReader;
@@ -11,11 +13,12 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A {@link Client} implementation model representing post-login I/O communications.
  *
- * @author lare96 
+ * @author lare96
  */
 public class GameClient extends Client<GameMessage> {
 
@@ -35,28 +38,35 @@ public class GameClient extends Client<GameMessage> {
     protected final GameMessageRepository repository;
 
     /**
-     * If the client is awaiting logout.
+     * If this client is currently pending logout.
      */
-    private volatile boolean pendingLogout;
+    private final AtomicBoolean pendingLogout = new AtomicBoolean();
+
+    /**
+     * The player instance.
+     */
+    private final Player player;
 
     /**
      * Creates a new {@link GameClient}.
      *
      * @param channel The client's channel.
      * @param repository The message repository.
+     * @param player The player instance.
      */
-    public GameClient(Channel channel, GameMessageRepository repository) {
+    public GameClient(Channel channel, GameMessageRepository repository, Player player) {
         super(channel);
         this.repository = repository;
+        this.player = player;
     }
 
     @Override
     public void onInactive() {
-        setPendingLogout(true);
+        sendLogoutRequest();
     }
 
     @Override
-   public  void onMessageReceived(GameMessage msg) {
+    public void onMessageReceived(GameMessage msg) {
         if (!pendingReadMessages.offer(msg)) {
             msg.getPayload().releaseAll();
         }
@@ -65,7 +75,7 @@ public class GameClient extends Client<GameMessage> {
     /**
      * Handles decoded game packets and posts their created events to all applicable plugin listeners.
      */
-    public void handleDecodedMessages(Player player) {
+    public void handleDecodedMessages() {
         for (; ; ) {
             GameMessage msg = pendingReadMessages.poll();
             if (msg == null) {
@@ -86,7 +96,7 @@ public class GameClient extends Client<GameMessage> {
      *
      * @param msg The message to queue.
      */
-    public void queue(GameMessageWriter msg, Player player) {
+    public void queue(GameMessageWriter msg) {
         if (channel.isActive()) {
             channel.write(msg.toGameMessage(player), channel.voidPromise());
         }
@@ -94,7 +104,7 @@ public class GameClient extends Client<GameMessage> {
 
     /**
      * Flushes the underlying channel. This will send all messages to the client queued using
-     * {@link #queue(GameMessageWriter, Player)}. Calls to this method are expensive and should be done sparingly.
+     * {@link #queue(GameMessageWriter)}. Calls to this method are expensive and should be done sparingly.
      */
     public void flush() {
         if (channel.isActive()) {
@@ -103,17 +113,20 @@ public class GameClient extends Client<GameMessage> {
     }
 
     /**
-     * Sets if the client is awaiting logout.
+     * Sends a logout request for this player to the {@link LogoutService}.
      */
-    public void setPendingLogout(boolean pendingLogout) {
-        this.pendingLogout = pendingLogout;
+    public void sendLogoutRequest() {
+        if (pendingLogout.compareAndSet(false, true)) {
+            LogoutService logoutService = player.getWorld().getLogoutService();
+            logoutService.submit(player.getUsername(), new LogoutRequest(player));
+        }
     }
 
     /**
-     * @return {@code true} if the client is awaiting logout.
+     * @return If this client is currently pending logout.
      */
     public boolean isPendingLogout() {
-        return pendingLogout;
+        return pendingLogout.get();
     }
 
     /**

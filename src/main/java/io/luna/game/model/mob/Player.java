@@ -2,16 +2,20 @@ package io.luna.game.model.mob;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import game.item.consumable.potion.PotionCountdownTimer;
+import game.player.Messages;
+import game.player.Sounds;
 import io.luna.Luna;
 import io.luna.LunaContext;
 import io.luna.game.LogoutService;
-import io.luna.game.LogoutService.LogoutRequest;
 import io.luna.game.event.impl.InteractableEvent;
 import io.luna.game.event.impl.LoginEvent;
 import io.luna.game.event.impl.LogoutEvent;
 import io.luna.game.model.Entity;
-import io.luna.game.model.EntityState;
 import io.luna.game.model.EntityType;
 import io.luna.game.model.Position;
 import io.luna.game.model.chunk.ChunkUpdatableView;
@@ -20,7 +24,6 @@ import io.luna.game.model.item.Equipment;
 import io.luna.game.model.item.GroundItem;
 import io.luna.game.model.item.Inventory;
 import io.luna.game.model.item.Item;
-import io.luna.game.model.map.DynamicMap;
 import io.luna.game.model.mob.block.Chat;
 import io.luna.game.model.mob.block.ExactMovement;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
@@ -30,6 +33,7 @@ import io.luna.game.model.mob.dialogue.DialogueQueue;
 import io.luna.game.model.mob.dialogue.DialogueQueueBuilder;
 import io.luna.game.model.mob.inter.AbstractInterfaceSet;
 import io.luna.game.model.mob.inter.GameTabSet;
+import io.luna.game.model.mob.inter.GameTabSet.TabIndex;
 import io.luna.game.model.mob.varp.PersistentVarp;
 import io.luna.game.model.mob.varp.PersistentVarpManager;
 import io.luna.game.model.mob.varp.Varbit;
@@ -42,7 +46,7 @@ import io.luna.net.LunaChannelFilter;
 import io.luna.net.client.GameClient;
 import io.luna.net.codec.ByteMessage;
 import io.luna.net.msg.GameMessageWriter;
-import io.luna.net.msg.out.DynamicMapMessageWriter;
+import io.luna.net.msg.out.AssignmentMessageWriter;
 import io.luna.net.msg.out.GameChatboxMessageWriter;
 import io.luna.net.msg.out.LogoutMessageWriter;
 import io.luna.net.msg.out.RegionMessageWriter;
@@ -54,11 +58,9 @@ import io.luna.net.msg.out.WidgetTextMessageWriter;
 import io.luna.util.RandomUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import world.player.Messages;
-import world.player.Sounds;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -147,12 +149,27 @@ public class Player extends Mob {
     /**
      * A set of local players. Should only be accessed from the updating threads.
      */
-    private final Set<Player> localPlayers = new LinkedHashSet<>(255);
+    private final Set<Player> updatePlayers = new LinkedHashSet<>(255);
 
     /**
      * A set of local npcs. Should only be accessed from the updating threads.
      */
-    private final Set<Npc> localNpcs = new LinkedHashSet<>(255);
+    private final Set<Npc> updateNpcs = new LinkedHashSet<>(255);
+
+    /**
+     * All players being updated around this player.
+     */
+    private final Set<Player> localPlayers = Sets.newConcurrentHashSet();
+
+    /**
+     * All {@link Bot} players only being updated around this player.
+     */
+    private final Set<Bot> localBots = Sets.newConcurrentHashSet();
+
+    /**
+     * All NPCs being updated around this player.
+     */
+    private final Set<Npc> localNpcs = Sets.newConcurrentHashSet();
 
     /**
      * The appearance.
@@ -195,9 +212,19 @@ public class Player extends Mob {
     private final Map<Integer, String> textCache = new HashMap<>();
 
     /**
+     * The privacy options.
+     */
+    private PlayerPrivacy privacyOptions = new PlayerPrivacy();
+
+    /**
      * The music tab data.
      */
-    private PlayerMusicTab musicTab = new PlayerMusicTab();
+    private MusicTab musicTab = new MusicTab();
+
+    /**
+     * The spellbook.
+     */
+    private Spellbook spellbook = Spellbook.REGULAR;
 
     /**
      * The cached update block.
@@ -260,11 +287,6 @@ public class Player extends Mob {
     private int privateMsgCounter = 1;
 
     /**
-     * If a teleportation is in progress.
-     */
-    private boolean teleporting;
-
-    /**
      * The friend list.
      */
     private final Set<Long> friends = new LinkedHashSet<>();
@@ -320,6 +342,16 @@ public class Player extends Mob {
     private double weight;
 
     /**
+     * When this account was first created on.
+     */
+    private Instant createdAt = Instant.now();
+
+    /**
+     * The total time played (total time logged in).
+     */
+    private Duration timePlayed = Duration.ZERO;
+
+    /**
      * The controller manager.
      */
     private final ControllerManager controllers = new ControllerManager(this);
@@ -345,13 +377,6 @@ public class Player extends Mob {
     private final Stopwatch timeOnline = Stopwatch.createUnstarted();
 
     /**
-     * The current dynamic map the player is in.
-     */
-    private DynamicMap dynamicMap;
-
-    private LocalDate creationDate;
-
-    /**
      * The current interaction task.
      */
     private InteractionTask interactionTask;
@@ -365,14 +390,6 @@ public class Player extends Mob {
     public Player(LunaContext context, PlayerCredentials credentials) {
         super(context, EntityType.PLAYER);
         this.credentials = credentials;
-    }
-
-    public LocalDate getCreationDate() {
-        return creationDate;
-    }
-
-    public void setCreationDate(LocalDate date) {
-        this.creationDate = date;
     }
 
     @Override
@@ -420,6 +437,7 @@ public class Player extends Mob {
     protected void onActive() {
         teleporting = true;
         flags.flag(UpdateFlag.APPEARANCE);
+        queue(new AssignmentMessageWriter(true));
         timeOnline.start();
         plugins.post(new LoginEvent(this));
     }
@@ -428,7 +446,6 @@ public class Player extends Mob {
     protected void onInactive() {
         interfaces.close();
         world.getTasks().forEachAttachment(this, Task::cancel);
-        world.getPlayerMap().remove(getUsername());
         plugins.post(new LogoutEvent(this));
     }
 
@@ -441,7 +458,6 @@ public class Player extends Mob {
     @Override
     public void reset() {
         regionChanged = false;
-        teleporting = false;
         chat = Optional.empty();
         exactMovement = Optional.empty();
     }
@@ -483,7 +499,7 @@ public class Player extends Mob {
      * Prepares the save data to be serialized by a {@link LogoutService} worker.
      */
     public PlayerData createSaveData() {
-        saveData = new PlayerData(getUsername()).save(this);
+        saveData = new PlayerData(getUsername()).save(this); // todo not thread safe, why is savedata even volatile...?
         return saveData;
     }
 
@@ -499,18 +515,6 @@ public class Player extends Mob {
             setPosition(Luna.settings().game().startingPosition());
             rights = Luna.settings().game().betaMode() || LunaChannelFilter.WHITELIST.contains(client.getIpAddress()) ?
                     PlayerRights.DEVELOPER : PlayerRights.PLAYER;
-            creationDate = LocalDate.now();
-        }
-    }
-
-    /**
-     * Prepares the player for logout.
-     */
-    public void cleanUp() {
-        if (getState() == EntityState.ACTIVE) {
-            setState(EntityState.INACTIVE);
-            createSaveData();
-            world.getLogoutService().submit(getUsername(), new LogoutRequest(this));
         }
     }
 
@@ -550,18 +554,34 @@ public class Player extends Mob {
      * @param item The item to give the player.
      */
     public void giveItem(Item item) {
-        if (inventory.hasSpaceFor(item)) {
-            inventory.add(item);
-            return;
+        String name = item.getItemDef().getName();
+        int freeSlots = inventory.computeRemainingSize();
+        if (item.getItemDef().isStackable()) {
+            int amount = inventory.computeAmountForId(item.getId());
+            if ((amount == 0 && freeSlots > 0) || (amount + item.getAmount() > 0)) {
+                inventory.add(item);
+                sendMessage(name + "(x" + item.getAmount() + ")" + " has been added into your inventory.");
+                return;
+            }
+        } else {
+            int leftover = item.getAmount() - freeSlots;
+            if (leftover > 0) {
+                inventory.add(item.withAmount(freeSlots)); // Add what we can fit.
+                sendMessage(name + "(x" + item.getAmount() + ")" + " has been added into your inventory.");
+                item = item.withAmount(leftover); // Add the rest to the bank or on the ground.
+            } else {
+                inventory.add(item);
+                return;
+            }
         }
-        String name = item.getItemDef().getName() + "(x" + item.getAmount() + ")";
+
         if (bank.hasSpaceFor(item)) {
             bank.add(item);
-            sendMessage(name + " has been deposited into your bank.");
+            sendMessage(name + "(x" + item.getAmount() + ")" + " has been deposited into your bank.");
         } else {
             world.getItems().register(new GroundItem(context, item.getId(), item.getAmount(),
                     position, ChunkUpdatableView.localView(this)));
-            sendMessage(name + " has been dropped on the floor under you.");
+            sendMessage(name + "(x" + item.getAmount() + ")" + " has been dropped on the floor under you.");
         }
     }
 
@@ -715,7 +735,17 @@ public class Player extends Mob {
         var channel = client.getChannel();
         if (channel.isActive()) {
             queue(new LogoutMessageWriter());
-            client.setPendingLogout(true);
+        }
+    }
+
+    /**
+     * Logs out this player using the logout packet. The proper way to logout the player.
+     */
+    public void forceLogout() {
+        // todo implement, maybe with a boolean isForcedLogout
+        var channel = client.getChannel();
+        if (channel.isActive()) {
+            queue(new LogoutMessageWriter());
         }
     }
 
@@ -750,12 +780,12 @@ public class Player extends Mob {
     }
 
     /**
-     * A shortcut function to {@link GameClient#queue(GameMessageWriter, Player)}.
+     * A shortcut function to {@link GameClient#queue(GameMessageWriter)}.
      *
      * @param msg The message to queue in the buffer.
      */
     public void queue(GameMessageWriter msg) {
-        client.queue(msg, this);
+        client.queue(msg);
     }
 
     /**
@@ -763,17 +793,13 @@ public class Player extends Mob {
      *
      * @param oldPosition The player's old position before movement processing.
      */
-    public void sendRegionUpdate(Position oldPosition) {
+    public void sendRegionUpdate(Position oldPosition) { // todo rename
         boolean fullRefresh = false;
         if (lastRegion == null || needsRegionUpdate()) {
             fullRefresh = true;
             regionChanged = true;
             lastRegion = position;
-            if (isInDynamicMap()) { // TODO
-                queue(new DynamicMapMessageWriter(dynamicMap, position));
-            } else {
-                queue(new RegionMessageWriter(position));
-            }
+            queue(new RegionMessageWriter(position));
         }
         if (isTeleporting()) {
             fullRefresh = true;
@@ -802,7 +828,7 @@ public class Player extends Mob {
     /**
      * Plays the sound with {@code id} with {@code delay}.
      */
-    public void playSound(int soundId, int delay) {
+   private void playSound(int soundId, int delay) {
         int volume = varpManager.getValue(PersistentVarp.EFFECTS_VOLUME);
         queue(new SoundMessageWriter(soundId, volume, delay));
     }
@@ -810,7 +836,7 @@ public class Player extends Mob {
     /**
      * Plays sound with {@code id} with no delay.
      */
-    public void playSound(int soundId) {
+    private void playSound(int soundId) { // todo no point in magic numbers, reove this
         playSound(soundId, 0);
     }
 
@@ -828,6 +854,28 @@ public class Player extends Mob {
         int delay = (delayTicks * 600) / 30;
         int volume = varpManager.getValue(PersistentVarp.EFFECTS_VOLUME);
         queue(new SoundMessageWriter(sound.getId(), volume, delay));
+    }
+
+    /**
+     * Saves all active {@link PotionCountdownTimer} types to a {@link JsonArray}.
+     */
+    public JsonArray savePotionsToJson() {
+        JsonArray array = new JsonArray();
+        for (var timer : actions.getAll(PotionCountdownTimer.class)) {
+            array.add(timer.saveJson());
+        }
+        return array;
+    }
+
+    /**
+     * Loads all previously active {@link PotionCountdownTimer} types into this player.
+     */
+    public void loadPotionsFromJson(JsonArray array) {
+        if (array != null) {
+            for (JsonElement element : array) {
+                PotionCountdownTimer.Companion.loadJson(this, element.getAsJsonObject());
+            }
+        }
     }
 
     /**
@@ -1029,15 +1077,15 @@ public class Player extends Mob {
     /**
      * @return A set of local players. Should only be accessed from the updating threads.
      */
-    public Set<Player> getLocalPlayers() {
-        return localPlayers;
+    public Set<Player> getUpdatePlayers() {
+        return updatePlayers;
     }
 
     /**
      * @return A set of local npcs. Should only be accessed from the updating threads.
      */
-    public Set<Npc> getLocalNpcs() {
-        return localNpcs;
+    public Set<Npc> getUpdateNpcs() {
+        return updateNpcs;
     }
 
     /**
@@ -1045,14 +1093,14 @@ public class Player extends Mob {
      *
      * @param musicTab The new value.
      */
-    public void setMusicTab(PlayerMusicTab musicTab) {
+    public void setMusicTab(MusicTab musicTab) {
         this.musicTab = musicTab;
     }
 
     /**
      * @return The music tab data.
      */
-    public PlayerMusicTab getMusicTab() {
+    public MusicTab getMusicTab() {
         return musicTab;
     }
 
@@ -1299,13 +1347,6 @@ public class Player extends Mob {
     }
 
     /**
-     * @return {@code true} if a teleportation is in progress.
-     */
-    public boolean isTeleporting() {
-        return teleporting;
-    }
-
-    /**
      * @return The interaction menu.
      */
     public PlayerInteractionMenu getInteractions() {
@@ -1380,27 +1421,6 @@ public class Player extends Mob {
     }
 
     /**
-     * Sets the current dynamic map the player is in.
-     */
-    public void setDynamicMap(DynamicMap dynamicMap) {
-        this.dynamicMap = dynamicMap;
-    }
-
-    /**
-     * @return The current dynamic map the player is in.
-     */
-    public DynamicMap getDynamicMap() {
-        return dynamicMap;
-    }
-
-    /**
-     * @return {@code true} If the player is in a dynamic map.
-     */
-    public boolean isInDynamicMap() {
-        return dynamicMap != null;
-    }
-
-    /**
      * @return The current interaction task.
      */
     public InteractionTask getInteractionTask() {
@@ -1419,5 +1439,114 @@ public class Player extends Mob {
      */
     public Map<Integer, Integer> getCachedVarps() {
         return cachedVarps;
+    }
+
+    /**
+     * @return The current spellbook.
+     */
+    public Spellbook getSpellbook() {
+        if (spellbook == null) {
+            spellbook = Spellbook.REGULAR;
+        }
+        return spellbook;
+    }
+
+    /**
+     * Updates the current spellbook and potentially the magic tab as well.
+     *
+     * @param newSpellbook The new spellbok.
+     * @param updateTab If the magic tab should be updated.
+     */
+    public void updateSpellbook(Spellbook newSpellbook, boolean updateTab) {
+        if (newSpellbook == null) {
+            newSpellbook = Spellbook.REGULAR;
+        }
+        spellbook = newSpellbook;
+        if (updateTab) {
+            tabs.reset(TabIndex.MAGIC);
+        }
+    }
+
+    /**
+     * Updates the current spellbook and the magic tab.
+     */
+    public void setSpellbook(Spellbook newSpellbook) {
+        updateSpellbook(newSpellbook, true);
+    }
+
+    /**
+     * @return The local players.
+     */
+    public Set<Player> getLocalPlayers() {
+        return localPlayers;
+    }
+
+    /**
+     * @return The local bots.
+     */
+    public Set<Bot> getLocalBots() {
+        return localBots;
+    }
+
+    /**
+     * @return The local npcs.
+     */
+    public Set<Npc> getLocalNpcs() {
+        return localNpcs;
+    }
+
+    /**
+     * Sets when this account was first created on.
+     *
+     * @param createdAt The new value.
+     */
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    /**
+     * @return When this account was first created on.
+     */
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    /**
+     * @return The total amount of time played.
+     */
+    public Duration getTimePlayed() {
+        if (timePlayed == null) {
+            timePlayed = Duration.ZERO;
+        }
+        // Update on the fly.
+        timePlayed = timePlayed.plus(timeOnline.elapsed());
+        timeOnline.reset().start();
+        return timePlayed;
+    }
+
+    /**
+     * Sets the total time played (total time logged in).
+     *
+     * @param timePlayed The new value.
+     */
+    public void setTimePlayed(Duration timePlayed) {
+        this.timePlayed = timePlayed;
+    }
+
+    /**
+     * Sets the new privacy options.
+     */
+    public void setPrivacyOptions(PlayerPrivacy privacyOptions) {
+        this.privacyOptions = privacyOptions;
+    }
+
+    /**
+     * @return The privacy options.
+     */
+    public PlayerPrivacy getPrivacyOptions() {
+        if (privacyOptions == null) {
+            privacyOptions = new PlayerPrivacy();
+        }
+        return privacyOptions;
     }
 }

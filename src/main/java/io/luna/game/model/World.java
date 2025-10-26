@@ -1,7 +1,6 @@
 package io.luna.game.model;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.luna.LunaContext;
 import io.luna.game.GameService;
 import io.luna.game.LoginService;
@@ -10,12 +9,11 @@ import io.luna.game.model.chunk.ChunkManager;
 import io.luna.game.model.collision.CollisionManager;
 import io.luna.game.model.item.GroundItemList;
 import io.luna.game.model.item.shop.ShopManager;
-import io.luna.game.model.map.DynamicMapSpacePool;
 import io.luna.game.model.mob.MobList;
 import io.luna.game.model.mob.Npc;
 import io.luna.game.model.mob.Player;
-import io.luna.game.model.mob.bot.Bot;
 import io.luna.game.model.mob.bot.BotCredentialsRepository;
+import io.luna.game.model.mob.bot.BotManager;
 import io.luna.game.model.mob.bot.BotRepository;
 import io.luna.game.model.mob.bot.BotScheduleService;
 import io.luna.game.model.mob.controller.ControllerProcessTask;
@@ -26,7 +24,7 @@ import io.luna.game.task.Task;
 import io.luna.game.task.TaskManager;
 import io.luna.net.msg.out.NpcUpdateMessageWriter;
 import io.luna.net.msg.out.PlayerUpdateMessageWriter;
-import io.luna.util.ThreadUtils;
+import io.luna.util.ExecutorUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -36,9 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Phaser;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -76,7 +72,7 @@ public final class World {
                     player.getClient().flush();
                 } catch (Exception e) {
                     logger.warn(new ParameterizedMessage("{} could not complete synchronization.", player, e));
-                    player.logout();
+                    player.forceLogout();
                 } finally {
                     synchronizer.arriveAndDeregister();
                 }
@@ -120,6 +116,11 @@ public final class World {
     private final BotScheduleService botService;
 
     /**
+     * The bot manager.
+     */
+    private final BotManager botManager = new BotManager();
+
+    /**
      * The login service.
      */
     private final LoginService loginService = new LoginService(this);
@@ -132,7 +133,7 @@ public final class World {
     /**
      * The persistence service.
      */
-    private final PersistenceService persistenceService = new PersistenceService(this);
+    private final PersistenceService persistenceService;
 
     /**
      * The serializer manager.
@@ -190,11 +191,6 @@ public final class World {
     private final CollisionManager collisionManager;
 
     /**
-     * A repository for instances created using the construct map region packet.
-     */
-    private final DynamicMapSpacePool dynamicMapSpacePool;
-
-    /**
      * Creates a new {@link World}.
      *
      * @param context The context instance
@@ -204,14 +200,13 @@ public final class World {
 
         playerMap = new ConcurrentHashMap<>();
         collisionManager = new CollisionManager(this);
-        dynamicMapSpacePool = new DynamicMapSpacePool(context);
         botRepository = new BotRepository(this);
         botCredentials = new BotCredentialsRepository(context);
         botService = new BotScheduleService(this);
+        persistenceService = new PersistenceService(this);
 
         // Initialize synchronization thread pool.
-        ThreadFactory tf = new ThreadFactoryBuilder().setNameFormat("WorldSynchronizationThread").build();
-        updatePool = Executors.newFixedThreadPool(ThreadUtils.cpuCount(), tf);
+        updatePool = ExecutorUtils.threadPool("WorldSynchronizationThread");
     }
 
     /**
@@ -222,8 +217,7 @@ public final class World {
         botRepository.load();
         collisionManager.build(false);
         schedule(new ControllerProcessTask(this));
-        dynamicMapSpacePool.buildEmptySpacePool();
-        botCredentials.load();
+        botManager.load();
     }
 
     /**
@@ -251,9 +245,10 @@ public final class World {
 
     /**
      * Runs one iteration of the main game loop. This method should <strong>never</strong> be called by anything other
-     * than the {@link GameService}.
+     * than the {@link GameService}. This function and the functions invoked within follow a very specific order and
+     * should not be changed.
      */
-    public void loop() {
+    public void process() {
         // Add pending players that have just logged in.
         loginService.finishRequests();
 
@@ -267,6 +262,7 @@ public final class World {
         preSynchronize();
         synchronize();
         postSynchronize();
+
         chunks.resetUpdatedChunks();
 
         // Increment tick counter.
@@ -277,25 +273,17 @@ public final class World {
      * Pre-synchronization part of the game loop, process all tick-dependant player logic.
      */
     private void preSynchronize() {
+
+        // First handle all client input from players.
         for (Player player : playerList) {
-            try {
-                if (player.getClient().isPendingLogout()) {
-                    player.cleanUp();
-                    continue;
-                }
-                player.getClient().handleDecodedMessages(player);
-                player.getWalking().process();
-                if (player.isBot()) {
-                    Bot bot = (Bot) player;
-                    bot.process();
-                }
-                player.getActions().process();
-            } catch (Exception e) {
-                player.logout();
-                logger.warn(new ParameterizedMessage("{} could not complete pre-synchronization.", player, e));
+            if (player.getClient().isPendingLogout()) {
+                // No input to handle, client should already appear logged out here.
+                continue;
             }
+            player.getClient().handleDecodedMessages();
         }
 
+        // Then, pre-process NPC walking and action queues.
         for (Npc npc : npcList) {
             try {
                 npc.getWalking().process();
@@ -306,23 +294,20 @@ public final class World {
             }
         }
 
-        // Region update and action queue must be processed last.
+        /* Finally, pre-process player walking and action queues. Bot 'input'
+            and brain processing is also handled here. */
         for (Player player : playerList) {
-            if (player.getClient().isPendingLogout()) {
-                player.cleanUp();
-                continue;
-            }
             try {
-                Position oldPosition = player.getPosition();
-
-                player.sendRegionUpdate(oldPosition);
+                if (player.isBot()) {
+                    player.asBot().process();
+                }
+                player.getWalking().process();
                 player.getActions().process();
             } catch (Exception e) {
                 player.logout();
-                logger.warn(new ParameterizedMessage("Could not finalize pre-synchronization for {}.", player, e));
+                logger.warn(new ParameterizedMessage("{} could not complete pre-synchronization.", player, e));
             }
         }
-
     }
 
     /**
@@ -331,32 +316,43 @@ public final class World {
     private void synchronize() {
         synchronizer.bulkRegister(playerList.size());
         for (Player player : playerList) {
+            if (player.getClient().isPendingLogout() || player.isBot()) {
+                // No point of sending updates to a client that can't see entities.
+                synchronizer.arriveAndDeregister();
+                continue;
+            }
+            /*
+                Handle region changes before player updating to ensure no other packets
+                related to it are sent. Queued data will be sent after updating
+                completes, within the synchronization task.
+            */
+            player.sendRegionUpdate(player.getPosition());
             updatePool.execute(new PlayerSynchronizationTask(player));
         }
         synchronizer.arriveAndAwaitAdvance();
     }
 
     /**
-     * Post-synchronization part of the game loop, reset variables.
+     * Post-synchronization part of the game loop, reset update flags.
      */
     private void postSynchronize() {
-        for (Player player : playerList) {
-            try {
-                player.resetFlags();
-                player.setCachedBlock(null);
-                player.getClient().flush();
-            } catch (Exception e) {
-                player.logout();
-                logger.warn(new ParameterizedMessage("{} could not complete post-synchronization.", player), e);
-            }
-        }
 
+        // Reset data related to player and NPC updating.
         for (Npc npc : npcList) {
             try {
                 npc.resetFlags();
             } catch (Exception e) {
                 npcList.remove(npc);
                 logger.warn(new ParameterizedMessage("{} could not complete post-synchronization.", npc), e);
+            }
+        }
+        for (Player player : playerList) {
+            try {
+                player.resetFlags();
+                player.setCachedBlock(null);
+            } catch (Exception e) {
+                player.logout();
+                logger.warn(new ParameterizedMessage("{} could not complete post-synchronization.", player), e);
             }
         }
     }
@@ -378,7 +374,7 @@ public final class World {
      * @return The player, or no player.
      */
     public Optional<Player> getPlayer(String username) {
-        return playerList.findFirst(player -> player.getUsername().equalsIgnoreCase(username));
+        return Optional.ofNullable(playerMap.get(username));
     }
 
     /**
@@ -510,16 +506,16 @@ public final class World {
     }
 
     /**
-     * @return A repository for instances created using the construct map region packet.
-     */
-    public DynamicMapSpacePool getDynamicMapSpacePool() {
-        return dynamicMapSpacePool;
-    }
-
-    /**
      * @return The bot schedule service.
      */
     public BotScheduleService getBotScheduleService() {
         return botService;
+    }
+
+    /**
+     * @return The bot manager.
+     */
+    public BotManager getBotManager() {
+        return botManager;
     }
 }
