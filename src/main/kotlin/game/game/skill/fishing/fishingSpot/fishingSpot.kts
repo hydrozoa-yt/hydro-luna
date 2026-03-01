@@ -22,11 +22,11 @@ on(ServerLaunchEvent::class) {
 // Draynor village
 FishingSpotHandler.add(spawn = true) {
     id = 316
-    home = Position(3085, 3230)
+    home = Position(3084, 3230)
     away += Position(3085, 3229)
 }
 FishingSpotHandler.add(spawn = true) {
     id = 316
-    home = Position(3086, 3227)
+    home = Position(3086, 3228)
     away += Position(3086, 3223)
 }

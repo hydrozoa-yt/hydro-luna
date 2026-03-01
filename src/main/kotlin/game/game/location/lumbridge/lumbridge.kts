@@ -11,6 +11,7 @@ import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.dialogue.Expression
 import io.luna.game.model.item.shop.*
+import io.luna.game.model.mob.wandering.*
 
 ShopHandler.create("Bob's Brilliant Axes.") {
     buy = BuyPolicy.EXISTING
@@ -256,10 +257,11 @@ on(ServerLaunchEvent::class) {
         y = 3248)
 
     // Hans
-    world.addNpc(
+    val hans = world.addNpc(
         id = 0,
         x = 3221,
         y = 3224)
+    hans.startWandering(10, WanderingFrequency.NORMAL)
 
     // Bob
     world.addNpc(
