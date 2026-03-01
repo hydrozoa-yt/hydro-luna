@@ -1,4 +1,4 @@
-package world.location.falador
+package game.location.falador
 
 import api.predef.*
 import api.predef.ext.*

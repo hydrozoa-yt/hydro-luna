@@ -1,4 +1,4 @@
-package world.location.draynorVillage
+package game.location.draynorVillage
 
 import api.plugin.dsl.plugin
 

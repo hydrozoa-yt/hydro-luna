@@ -1,4 +1,4 @@
-package world.location.lumbridge
+package game.location.lumbridge
 
 import api.plugin.dsl.plugin
 

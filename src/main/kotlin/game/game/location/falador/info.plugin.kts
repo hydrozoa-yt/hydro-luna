@@ -1,4 +1,4 @@
-package world.location.falador
+package game.location.falador
 
 import api.plugin.dsl.plugin
 

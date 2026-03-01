@@ -1,4 +1,4 @@
-package world.location.portSarim
+package game.location.portSarim
 
 import api.plugin.dsl.plugin
 

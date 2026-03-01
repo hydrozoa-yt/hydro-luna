@@ -1,4 +1,4 @@
-package world.location.varrock
+package game.location.varrock
 
 import api.predef.*
 import api.predef.ext.*
