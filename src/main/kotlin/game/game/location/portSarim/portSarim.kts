@@ -4,9 +4,7 @@ import api.predef.*
 import api.predef.ext.*
 import api.shop.dsl.ShopHandler
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
-import io.luna.game.model.item.shop.BuyPolicy
-import io.luna.game.model.item.shop.Currency
-import io.luna.game.model.item.shop.RestockPolicy
+import io.luna.game.model.item.shop.*
 
 ShopHandler.create("Brian's Battleaxe Bazaar.") {
     buy = BuyPolicy.EXISTING
@@ -67,7 +65,7 @@ npc1(559, {
                 plr.newDialogue()
                     .player("So, are you selling something?")
                     .npc(559, "Yep, take a lok at these great axes!")
-                    .then({plr.interfaces.openShop("Brian's Battleaxe Bazaar.")})
+                    .then({it.overlays.open(ShopInterface(world, "Brian's Battleaxe Bazaar."))})
                     .open()
             },
             "'Ello.", {
@@ -87,7 +85,10 @@ npc1(558, {
         .npc(558, "Wecome! You can buy fishing equipment at my store.", "We'll also buy anything you catch off you.")
         .options(
             "Let's see what you've got then.", {
-                plr.newDialogue().player("Let's see what you've got then.").then({plr.interfaces.openShop("Gerrant's Fishy Business.")}).open()
+                plr.newDialogue()
+                    .player("Let's see what you've got then.")
+                    .then({it.overlays.open(ShopInterface(world, "Gerrant's Fishy Business."))})
+                    .open()
             },
             "Sorry, I'm not interested.", {
                 plr.newDialogue().player("Sorry, I'm not interested.").open()

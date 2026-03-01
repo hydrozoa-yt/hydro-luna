@@ -5,9 +5,7 @@ import api.predef.ext.*
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import api.shop.dsl.ShopHandler
 import com.google.common.collect.ImmutableList
-import io.luna.game.model.item.shop.BuyPolicy
-import io.luna.game.model.item.shop.Currency
-import io.luna.game.model.item.shop.RestockPolicy
+import io.luna.game.model.item.shop.*
 
 val shopkeeperId = ImmutableList.of(524, 525)
 
@@ -45,7 +43,7 @@ shopkeeperId.forEach({npcId ->
         plr.newDialogue()
             .npc(targetNpc.id, "Can I help you at all?")
             .options("Yes please, what are you selling?", {
-                it.interfaces.openShop("Falador General Store")
+                it.overlays.open(ShopInterface(world, "Falador General Store"))
             }, "No thanks.", {
                 plr.newDialogue().player("No thanks.").open()
             })

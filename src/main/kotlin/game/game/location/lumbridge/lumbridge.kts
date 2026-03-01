@@ -10,6 +10,7 @@ import io.luna.game.model.item.shop.RestockPolicy
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.dialogue.Expression
+import io.luna.game.model.item.shop.*
 
 ShopHandler.create("Bob's Brilliant Axes.") {
     buy = BuyPolicy.EXISTING
@@ -42,7 +43,7 @@ npc1(519) {
                 plr.newDialogue()
                     .player("Have you anything to sell?")
                     .npc(targetNpc.id, "Yes! I buy and sell axes! Take your pick (or axe)!")
-                    .then { it.interfaces.openShop("Bob's Brilliant Axes.") }
+                    .then { it.overlays.open(ShopInterface(world, "Bob's Brilliant Axes."))}
                     .open()
             },
             "Can you repair my items for me?", {
@@ -57,13 +58,13 @@ npc1(519) {
 npc1(520) {
     plr.newDialogue()
         .npc(targetNpc.id, "Hi, here's what I have in stock for today!")
-        .then { it.interfaces.openShop("General Store") }.open()
+        .then { it.overlays.open(ShopInterface(world, "General Store"))}.open()
 }
 
 npc1(521) {
     plr.newDialogue()
         .npc(targetNpc.id, "I'm the assistant!")
-        .then { it.interfaces.openShop("General Store") }.open()
+        .then { it.overlays.open(ShopInterface(world, "General Store"))}.open()
 }
 
 // Hans dialogue
@@ -79,7 +80,7 @@ npc1(0) {
             "I have come to kill everyone in this castle!", {
                 plr.newDialogue()
                     .player(Expression.ANGRY, "I have come to kill everyone in this castle!")
-                    .then { targetNpc.forceChat("Help! Help!") }
+                    .then {targetNpc.speak("Help! Help!")}
                     .open()
             },
             "Can you tell me how long I've been here?", {

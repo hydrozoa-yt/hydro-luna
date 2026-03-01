@@ -4,9 +4,7 @@ import api.predef.*
 import api.predef.ext.*
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import api.shop.dsl.ShopHandler
-import io.luna.game.model.item.shop.BuyPolicy
-import io.luna.game.model.item.shop.Currency
-import io.luna.game.model.item.shop.RestockPolicy
+import io.luna.game.model.item.shop.*
 
 val shopkeeperId = 580
 
@@ -40,7 +38,7 @@ npc1(shopkeeperId) {
         .options("No thanks.", {
             plr.newDialogue().player("No thanks.").open()
         }, "Well, I'll have a look, at least.", {
-            it.interfaces.openShop("Flynn's Mace Market.")
+            it.overlays.open(ShopInterface(world, "Flynn's Mace Market."))
         })
         .open()
 }
