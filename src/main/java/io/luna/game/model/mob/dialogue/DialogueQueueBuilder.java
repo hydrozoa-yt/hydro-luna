@@ -2,7 +2,6 @@ package io.luna.game.model.mob.dialogue;
 
 import io.luna.game.model.item.Item;
 import io.luna.game.model.mob.Player;
-import io.luna.game.model.mob.inter.DialogueInterface;
 
 import java.util.ArrayDeque;
 import java.util.List;
@@ -64,26 +63,25 @@ public final class DialogueQueueBuilder {
      * Creates a new {@link DialogueQueueBuilder}.
      *
      * @param player The player.
-     * @param initialSize The initial size of the internal queue.
      */
-    public DialogueQueueBuilder(Player player, int initialSize) {
+    public DialogueQueueBuilder(Player player) {
         this.player = player;
-        dialogues = new ArrayDeque<>(initialSize);
+        dialogues = new ArrayDeque<>();
     }
 
     /**
-     * Shortcut to {@link PlayerDialogueInterface#PlayerDialogueInterface(Expression, String...)}.
+     * Shortcut to {@link PlayerDialogue#PlayerDialogue(Expression, String...)}.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder player(Expression expression, String... text) {
         checkLocked();
-        dialogues.add(new PlayerDialogueInterface(expression, text));
+        dialogues.add(new PlayerDialogue(expression, text));
         return this;
     }
 
     /**
-     * Shortcut to {@link PlayerDialogueInterface#PlayerDialogueInterface(Expression, String...)} with the
+     * Shortcut to {@link PlayerDialogue#PlayerDialogue(Expression, String...)} with the
      * default expression value.
      *
      * @return This builder, for chaining.
@@ -93,29 +91,29 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link NpcDialogueInterface#NpcDialogueInterface(int, int, String...)}.
+     * Shortcut to {@link NpcDialogue#NpcDialogue(int, int, String...)}.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder npc(int npcId, int expression, String... text) {
         checkLocked();
-        dialogues.add(new NpcDialogueInterface(npcId, expression, text));
+        dialogues.add(new NpcDialogue(npcId, expression, text));
         return this;
     }
 
     /**
-     * Shortcut to {@link NpcDialogueInterface#NpcDialogueInterface(int, Expression, String...)}.
+     * Shortcut to {@link NpcDialogue#NpcDialogue(int, Expression, String...)}.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder npc(int npcId, Expression expression, String... text) {
         checkLocked();
-        dialogues.add(new NpcDialogueInterface(npcId, expression, text));
+        dialogues.add(new NpcDialogue(npcId, expression, text));
         return this;
     }
 
     /**
-     * Shortcut to {@link NpcDialogueInterface#NpcDialogueInterface(int, Expression, String...)} with the
+     * Shortcut to {@link NpcDialogue#NpcDialogue(int, Expression, String...)} with the
      * default expression value.
      *
      * @return This builder, for chaining.
@@ -125,18 +123,18 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link TextDialogueInterface#TextDialogueInterface(String...)}.
+     * Shortcut to {@link TextDialogue#TextDialogue(String...)}.
      *
      * @return This builder, for chaining.
      */
-    public DialogueQueueBuilder empty(String... text) { // todo rename to 'text'
+    public DialogueQueueBuilder text(String... text) {
         checkLocked();
-        dialogues.add(new TextDialogueInterface(text));
+        dialogues.add(new TextDialogue(text));
         return this;
     }
 
     /**
-     * Shortcut to {@link OptionDialogueInterface#OptionDialogueInterface(String...)} with a dynamic amount of options.
+     * Shortcut to {@link OptionDialogue#OptionDialogue(String...)} with a dynamic amount of options.
      * The limit is {@code 5}.
      *
      * @return This builder, for chaining.
@@ -171,21 +169,21 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link OptionDialogueInterface#OptionDialogueInterface(String...)} with two options.
+     * Shortcut to {@link OptionDialogue#OptionDialogue(String...)} with two options.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder options(String option0, Consumer<Player> action0,
                                         String option1, Consumer<Player> action1) {
         checkLocked();
-        dialogues.add(new OptionDialogueInterface(option0, option1) {
+        dialogues.add(new OptionDialogue(option0, option1) {
             @Override
-            public void firstOption(Player player) {
+            public void first(Player player) {
                 action0.accept(player);
             }
 
             @Override
-            public void secondOption(Player player) {
+            public void second(Player player) {
                 action1.accept(player);
             }
         });
@@ -193,7 +191,7 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link OptionDialogueInterface#OptionDialogueInterface(String...)} with three options.
+     * Shortcut to {@link OptionDialogue#OptionDialogue(String...)} with three options.
      *
      * @return This builder, for chaining.
      */
@@ -201,19 +199,19 @@ public final class DialogueQueueBuilder {
                                         String option1, Consumer<Player> action1,
                                         String option2, Consumer<Player> action2) {
         checkLocked();
-        dialogues.add(new OptionDialogueInterface(option0, option1, option2) {
+        dialogues.add(new OptionDialogue(option0, option1, option2) {
             @Override
-            public void firstOption(Player player) {
+            public void first(Player player) {
                 action0.accept(player);
             }
 
             @Override
-            public void secondOption(Player player) {
+            public void second(Player player) {
                 action1.accept(player);
             }
 
             @Override
-            public void thirdOption(Player player) {
+            public void third(Player player) {
                 action2.accept(player);
             }
         });
@@ -221,7 +219,7 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link OptionDialogueInterface#OptionDialogueInterface(String...)} with four options.
+     * Shortcut to {@link OptionDialogue#OptionDialogue(String...)} with four options.
      *
      * @return This builder, for chaining.
      */
@@ -230,24 +228,24 @@ public final class DialogueQueueBuilder {
                                         String option2, Consumer<Player> action2,
                                         String option3, Consumer<Player> action3) {
         checkLocked();
-        dialogues.add(new OptionDialogueInterface(option0, option1, option2, option3) {
+        dialogues.add(new OptionDialogue(option0, option1, option2, option3) {
             @Override
-            public void firstOption(Player player) {
+            public void first(Player player) {
                 action0.accept(player);
             }
 
             @Override
-            public void secondOption(Player player) {
+            public void second(Player player) {
                 action1.accept(player);
             }
 
             @Override
-            public void thirdOption(Player player) {
+            public void third(Player player) {
                 action2.accept(player);
             }
 
             @Override
-            public void fourthOption(Player player) {
+            public void fourth(Player player) {
                 action3.accept(player);
             }
         });
@@ -255,7 +253,7 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link OptionDialogueInterface#OptionDialogueInterface(String...)} with all five options.
+     * Shortcut to {@link OptionDialogue#OptionDialogue(String...)} with all five options.
      *
      * @return This builder, for chaining.
      */
@@ -265,29 +263,29 @@ public final class DialogueQueueBuilder {
                                         String option3, Consumer<Player> action3,
                                         String option4, Consumer<Player> action4) {
         checkLocked();
-        dialogues.add(new OptionDialogueInterface(option0, option1, option2, option3, option4) {
+        dialogues.add(new OptionDialogue(option0, option1, option2, option3, option4) {
             @Override
-            public void firstOption(Player player) {
+            public void first(Player player) {
                 action0.accept(player);
             }
 
             @Override
-            public void secondOption(Player player) {
+            public void second(Player player) {
                 action1.accept(player);
             }
 
             @Override
-            public void thirdOption(Player player) {
+            public void third(Player player) {
                 action2.accept(player);
             }
 
             @Override
-            public void fourthOption(Player player) {
+            public void fourth(Player player) {
                 action3.accept(player);
             }
 
             @Override
-            public void fifthOption(Player player) {
+            public void fifth(Player player) {
                 action4.accept(player);
             }
         });
@@ -295,24 +293,24 @@ public final class DialogueQueueBuilder {
     }
 
     /**
-     * Shortcut to {@link GiveItemDialogueInterface#GiveItemDialogueInterface(Item, String)}.
+     * Shortcut to {@link GiveItemDialogue#GiveItemDialogue(Item, String)}.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder give(Item item, String displayText) {
         checkLocked();
-        dialogues.add(new GiveItemDialogueInterface(item, displayText));
+        dialogues.add(new GiveItemDialogue(item, displayText));
         return this;
     }
 
     /**
-     * Shortcut to {@link GiveItemDialogueInterface#GiveItemDialogueInterface(Item)}.
+     * Shortcut to {@link GiveItemDialogue#GiveItemDialogue(Item)}.
      *
      * @return This builder, for chaining.
      */
     public DialogueQueueBuilder give(Item item) {
         checkLocked();
-        dialogues.add(new GiveItemDialogueInterface(item));
+        dialogues.add(new GiveItemDialogue(item));
         return this;
     }
 
@@ -366,12 +364,13 @@ public final class DialogueQueueBuilder {
     public void open() {
         if (dialogues.size() == 1) {
             // Optimization for single-entry dialogues.
-            player.getInterfaces().open(dialogues.peekFirst());
+            DialogueInterface dialogue = dialogues.peekFirst();
+            if(dialogue != null) {
+                player.getOverlays().open(dialogue);
+            }
         } else {
-            DialogueQueue queue = new DialogueQueue(player, dialogues);
-            queue.advance();
-
-            player.setDialogues(queue);
+            player.setDialogues(new DialogueQueue(player, dialogues));
+            player.getDialogues().advance();
         }
 
         // Lock so that this builder's reference to 'dialogues' is immutable.

@@ -11,7 +11,7 @@ import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.PlayerRights
 import io.luna.game.model.mob.Skill
 import io.luna.game.model.mob.SkillSet
-import io.luna.game.model.mob.inter.NumberInputInterface
+import io.luna.game.model.mob.overlay.NumberInput
 
 /**
  * A command that makes all stats 99.
@@ -39,10 +39,10 @@ cmd("viewbank", RIGHTS_ADMIN) {
     val viewing = getInputFrom(0)
     val viewingPlr = world.getPlayer(viewing).orElseThrow()
     val bankInterface = object : DynamicBankInterface("The bank of ${viewingPlr.username}") {
-        override fun buildDisplayItems(player: Player?): MutableList<Item> =
-            viewingPlr.bank.filterNotNull().toMutableList()
+        override fun buildDisplayItems(player: Player?): ArrayList<Item> =
+            viewingPlr.bank.filterNotNull().toCollection(ArrayList())
     }
-    plr.interfaces.open(bankInterface)
+    plr.overlays.open(bankInterface)
 }
 
 /**
@@ -140,20 +140,20 @@ cmd("down", RIGHTS_ADMIN) {
  */
 cmd("shutdown", RIGHTS_ADMIN) {
     plr.newDialogue().options(
-        "Now", { gameThread.scheduleSystemUpdate(8) },
-        "1 Minute", { gameThread.scheduleSystemUpdate(100) },
-        "5 Minutes", { gameThread.scheduleSystemUpdate(500) },
-        "10 Minutes", { gameThread.scheduleSystemUpdate(800) },
+        "Now", { gameService.scheduleSystemUpdate(8) },
+        "1 Minute", { gameService.scheduleSystemUpdate(100) },
+        "5 Minutes", { gameService.scheduleSystemUpdate(500) },
+        "10 Minutes", { gameService.scheduleSystemUpdate(800) },
         "<x> Minutes", {
-            plr.interfaces.close()
-            plr.interfaces.open(object : NumberInputInterface() {
-                override fun onAmountInput(player: Player, value: Int) {
+            plr.overlays.closeWindows()
+            plr.overlays.open(object : NumberInput() {
+                override fun input(player: Player, value: Int) {
                     if (value < 1 || value > 60) {
-                        plr.newDialogue().empty("1-60 Minutes are the acceptable values. Please try again.").open()
+                        plr.newDialogue().text("1-60 Minutes are the acceptable values. Please try again.").open()
                         return
                     }
-                    gameThread.scheduleSystemUpdate(value * 100)
-                    plr.interfaces.close()
+                    gameService.scheduleSystemUpdate(value * 100)
+                    plr.overlays.closeWindows()
                 }
             })
         }).open()
@@ -178,7 +178,7 @@ cmd("set_rights", RIGHTS_ADMIN) {
 /**
  * A command that opens the player's bank.
  */
-cmd("engine/bank", RIGHTS_ADMIN) { plr.bank.open() }
+cmd("bank", RIGHTS_ADMIN) { plr.bank.open() }
 
 /**
  * A command that turns the player into a non-player character.
@@ -191,7 +191,7 @@ cmd("to_npc", RIGHTS_ADMIN) {
 /**
  * A command that spawns an item.
  */
-cmd("game/item", RIGHTS_ADMIN) {
+cmd("item", RIGHTS_ADMIN) {
     val id = asInt(0)
     val amount = if (args.size == 2) asInt(1) else 1
     plr.inventory.add(Item(id, amount))

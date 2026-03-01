@@ -2,6 +2,7 @@ package game.skill.fishing.fishingSpot
 
 import api.predef.*
 import api.predef.ext.*
+import game.skill.fishing.fishingSpot.FishingSpotHandler.add
 import io.luna.game.model.Position
 import io.luna.game.model.mob.Npc
 import io.luna.game.task.Task
@@ -81,14 +82,17 @@ object FishingSpotHandler : Task(false, 100) {
             id == null -> throw IllegalStateException("ID must be set.")
             home == null -> throw IllegalStateException("Home position must be set.")
             away.isEmpty() -> throw IllegalStateException("At least one away position must be added.")
+            else -> {
+                val npc = computeSpotNpc(id, home, spawn)
+                when {
+                    npc == null -> throw IllegalStateException("No fishing spot matching $id found on $home.")
+                    fishingSpots.containsKey(npc) ->
+                        throw IllegalStateException("This fishing spot has already been registered.")
+
+                    else -> fishingSpots[npc] = FishingSpot(id, home, away)
+                }
+            }
         }
-        val npc = computeSpotNpc(id!!, home!!, spawn)
-        when {
-            npc == null -> throw IllegalStateException("No fishing spot matching $id found on $home.")
-            fishingSpots.containsKey(npc) ->
-                throw IllegalStateException("This fishing spot has already been registered.")
-        }
-        fishingSpots[npc!!] = FishingSpot(id, home, away)
     }
 
     /**
@@ -99,7 +103,7 @@ object FishingSpotHandler : Task(false, 100) {
         if (spawn) {
             val npc = Npc(ctx, id, home)
             // 'add' might be called from script loading thread. So sync it with game thread just in case.
-            gameThread.sync { world.addNpc(npc) }
+            gameService.sync { world.addNpc(npc) }
             return npc
         } else {
             return world.npcs.find { it.position == home && it.id == id && it.definition.name == "Fishing spot" }

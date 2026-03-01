@@ -1,48 +1,67 @@
+
 package io.luna.game.model.mob.block;
 
 import com.google.common.collect.ImmutableList;
 import io.luna.game.model.mob.Player;
 import io.luna.net.codec.ByteMessage;
-
-import static io.luna.game.model.mob.block.UpdateState.UPDATE_LOCAL;
+import io.netty.buffer.ByteBuf;
 
 /**
- * An {@link AbstractUpdateBlockSet} implementation that handles the encoding of {@link Player} update
- * blocks.
+ * Handles encoding of all {@link UpdateBlock} types relevant to players.
+ *
+ * <p>
+ * The player update pipeline supports block caching to avoid repeatedly encoding update masks
+ * when possible. This class:
+ * </p>
+ *
+ * <ul>
+ *     <li>Determines if cached blocks may be reused.</li>
+ *     <li>Builds block sets when required.</li>
+ *     <li>Defines the list and encoding order of all player-specific update blocks.</li>
+ * </ul>
+ *
+ * <p>
+ * Player update blocks include appearance, chat, forced movement, hitsplats, graphics,
+ * and other visible effects.
+ * </p>
  *
  * @author lare96
  */
-public class PlayerUpdateBlockSet extends AbstractUpdateBlockSet<Player> {
+public final class PlayerUpdateBlockSet extends AbstractUpdateBlockSet<Player> {
 
     @Override
     public void addBlockSet(Player player, ByteMessage msg, UpdateState state) {
-        // If we can use a cached update block and the player has one, do it here.
-        boolean isCachingBlocks = state == UPDATE_LOCAL;
-        if (isCachingBlocks && player.hasCachedBlock()) {
-            msg.putBytes(player.getCachedBlock());
-            return;
+        // The block has already been encoded for someone this cycle; reuse it.
+        if (state == UpdateState.UPDATE_LOCAL) {
+            ByteBuf cachedBlock = player.acquireCachedBlock();
+            if (cachedBlock != null) {
+                try {
+                    msg.putBytes(cachedBlock);
+                    return;
+                } finally {
+                    cachedBlock.release();
+                }
+            }
         }
 
-        // Otherwise, encode and cache a new set of update blocks.
         ByteMessage blockMsg = ByteMessage.raw();
         try {
             encodeBlockSet(player, blockMsg, state);
             msg.putBytes(blockMsg);
 
-            // TODO We can probably cache update blocks in any phase. More research needed
-            // TODO more testing
-            if (isCachingBlocks) {
-                player.setCachedBlock(blockMsg);
+            // Cache the encoded block for someone else to reuse within this cycle.
+            if (state == UpdateState.UPDATE_LOCAL) {
+                player.cacheBlockIfAbsent(blockMsg);
             }
         } finally {
-            // TODO Resource leak here? Could have something to do with caching the blocks?
+            // Release the temporary buffer now that the cached copy has been made.
             blockMsg.release();
         }
     }
 
     @Override
     public void encodeBlock(Player player, UpdateBlock block, ByteMessage blockMsg) {
-        block.encodeForPlayer(player, blockMsg);
+        block.encodeForPlayer(blockMsg, player.getBlockData());
     }
 
     @Override

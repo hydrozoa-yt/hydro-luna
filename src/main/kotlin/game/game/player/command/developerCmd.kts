@@ -11,9 +11,10 @@ import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.block.Animation
 import io.luna.game.model.mob.block.Graphic
 import io.luna.game.model.mob.bot.Bot
-import io.luna.game.model.mob.inter.TextInputInterface
-import io.luna.game.model.mob.inter.StandardInterface
+import io.luna.game.model.mob.overlay.StandardInterface
+import io.luna.game.model.mob.overlay.TextInput
 import io.luna.game.model.mob.varp.Varp
+import io.luna.game.model.`object`.ObjectType
 import io.luna.net.msg.out.SoundMessageWriter
 import io.luna.util.CacheDumpUtils
 import java.lang.Boolean.parseBoolean
@@ -33,7 +34,8 @@ cmd("config", RIGHTS_DEV) {
  * A command that re-dumps cache definitions.
  */
 cmd("dumpcache", RIGHTS_DEV) {
-    gameThread.submit { CacheDumpUtils.dump() }.addListener({ plr.sendMessage("Cache dump complete.") }, gameThread.executor)
+    gameService.submit { CacheDumpUtils.dump() }
+        .thenRunAsync({ plr.sendMessage("Cache dump complete.") }, gameService.gameExecutor)
     plr.sendMessage("Dumping cache data...")
 }
 
@@ -56,17 +58,17 @@ cmd("bots", RIGHTS_DEV) {
  * Deletes a saved record of a player.
  */
 cmd("delete", RIGHTS_DEV) {
-    plr.interfaces.open(object : TextInputInterface() {
-        override fun onNameInput(player: Player?, value: String?) {
-            plr.newDialogue().empty("Are you sure you wish to delete all records for '$value' ?")
+    plr.overlays.open(object : TextInput() {
+        override fun input(player: Player, value: String) {
+            plr.newDialogue().text("Are you sure you wish to delete all records for '$value' ?")
                 .options("Yes",
                          {
                              world.persistenceService.delete(value)
-                                 .addListener({ plr.sendMessage("Done, deleted $value") },
-                                              gameThread.executor); plr.interfaces.close()
+                                 .thenRunAsync({ plr.sendMessage("Done, deleted $value") }, gameService.gameExecutor)
+                             plr.overlays.closeWindows()
                          },
                          "No",
-                         { plr.interfaces.close() }).open()
+                         { plr.overlays.closeWindows() }).open()
         }
     })
 }
@@ -74,7 +76,7 @@ cmd("delete", RIGHTS_DEV) {
 /**
  * A command that spawns a non-player character.
  */
-cmd("game/npc", RIGHTS_DEV) {
+cmd("npc", RIGHTS_DEV) {
     val npc = Npc(ctx, asInt(0), plr.position)
     world.addNpc(npc)
 }
@@ -88,6 +90,7 @@ cmd("object", RIGHTS_DEV) {
                     x = pos.x,
                     y = pos.y,
                     z = pos.z,
+                    type = ObjectType.ALL[asInt(1)]!!,
                     plr = plr)
 }
 
@@ -96,8 +99,8 @@ cmd("object", RIGHTS_DEV) {
  */
 cmd("roll", RIGHTS_DEV) {
     val times = asInt(0)
-    plr.interfaces.open(object : DynamicBankInterface("Drop simulation for 'Crystal chest'") {
-        override fun buildDisplayItems(player: Player?): MutableList<Item> {
+    plr.overlays.open(object : DynamicBankInterface("Drop simulation for 'Crystal chest x $times'") {
+        override fun buildDisplayItems(player: Player?): ArrayList<Item> {
             val items = arrayListOf<Item>()
             repeat(times) {
                 items += CrystalChestDropTable.roll(plr, plr)
@@ -126,7 +129,7 @@ cmd("mypos", RIGHTS_DEV) {
  */
 cmd("interface", RIGHTS_DEV) {
     val id = asInt(0)
-    plr.interfaces.open(StandardInterface(id))
+    plr.overlays.open(StandardInterface(id))
 }
 
 /**

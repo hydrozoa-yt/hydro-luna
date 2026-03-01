@@ -1,7 +1,5 @@
 package io.luna.game.model.mob.block;
 
-import io.luna.game.model.mob.Npc;
-import io.luna.game.model.mob.Player;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
 import io.luna.net.codec.ByteMessage;
 
@@ -16,19 +14,17 @@ public final class ForcedChatUpdateBlock extends UpdateBlock {
      * Creates a new {@link ForcedChatUpdateBlock}.
      */
     public ForcedChatUpdateBlock() {
-        super(UpdateFlag.FORCED_CHAT);
+        super(UpdateFlag.SPEAK);
     }
 
     @Override
-    public void encodeForPlayer(Player player, ByteMessage msg) {
-        String forcedChat = unwrap(player.getForcedChat());
-        msg.putString(forcedChat);
+    public void encodeForPlayer(ByteMessage msg, UpdateBlockData data) {
+        msg.putString(data.speak);
     }
 
     @Override
-    public void encodeForNpc(Npc npc, ByteMessage msg) {
-        String forcedChat = unwrap(npc.getForcedChat());
-        msg.putString(forcedChat);
+    public void encodeForNpc(ByteMessage msg, UpdateBlockData data) {
+        msg.putString(data.speak);
     }
 
     @Override

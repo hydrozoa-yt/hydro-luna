@@ -4,7 +4,7 @@ import api.predef.*
 import io.luna.game.event.impl.LoginEvent
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Player
-import io.luna.game.model.mob.PlayerAppearance.DesignPlayerInterface
+import io.luna.game.model.mob.block.PlayerAppearance.DesignPlayerInterface
 import game.player.login.firstLogin
 
 /**
@@ -41,7 +41,7 @@ val equipmentStarter = listOf(
 fun firstLogin(plr: Player) {
     plr.inventory.addAll(inventoryStarter)
     plr.equipment.addAll(equipmentStarter)
-    plr.interfaces.open(DesignPlayerInterface())
+    plr.overlays.open(DesignPlayerInterface())
     plr.firstLogin = false
 }
 

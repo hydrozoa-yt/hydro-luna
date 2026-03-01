@@ -3,28 +3,29 @@ package engine.widget
 import api.predef.*
 import api.predef.ext.*
 import io.luna.game.event.impl.ButtonClickEvent
-import io.luna.game.model.mob.dialogue.OptionDialogueInterface
+import io.luna.game.model.mob.dialogue.OptionDialogue
+import io.luna.game.model.mob.overlay.OverlayType
 
 /**
  * Invoked when the player clicks an option on an option dialogue.
  */
 fun clickOption(msg: ButtonClickEvent, option: Int) {
     val plr = msg.plr
-    val inter = plr.interfaces.get(OptionDialogueInterface::class)
+    val options = plr.overlays[OptionDialogue::class]
 
-    if (inter != null) {
+    if (options != null) {
         when (option) {
-            1 -> inter.firstOption(plr)
-            2 -> inter.secondOption(plr)
-            3 -> inter.thirdOption(plr)
-            4 -> inter.fourthOption(plr)
-            5 -> inter.fifthOption(plr)
+            1 -> options.first(plr)
+            2 -> options.second(plr)
+            3 -> options.third(plr)
+            4 -> options.fourth(plr)
+            5 -> options.fifth(plr)
             else -> throw IllegalArgumentException("'option' must be between 1-5 inclusive.")
         }
 
         // Only close if we still have the same interface open.
-        if (plr.dialogues.isEmpty && inter.isOpen && !plr.interfaces.isInputOpen) {
-            plr.interfaces.close()
+        if (plr.dialogues == null && options.isOpen && !plr.overlays.containsType(OverlayType.INPUT)) {
+            plr.overlays.closeWindows()
         }
     }
 }

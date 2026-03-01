@@ -7,43 +7,65 @@ import io.luna.game.plugin.Script;
 import io.luna.game.plugin.ScriptExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A dispatch pipeline that handles a specific type of event and routes it to appropriate listeners.
+ * Dispatch pipeline for a single {@link Event} type.
+ * <p>
+ * A pipeline owns all listeners registered for a specific {@code eventType} and dispatches events to them in a
+ * deterministic order based on {@link EventPriority}:
+ * <ol>
+ *   <li>{@link EventPriority#HIGH} (at most one listener per event type)</li>
+ *   <li>{@link EventPriority#NORMAL} listeners</li>
+ *   <li>{@link EventMatcher} (key-based/filtered match dispatch)</li>
+ *   <li>{@link EventPriority#LOW} listeners</li>
+ * </ol>
  *
- * @param <E> The type of event this pipeline handles.
+ * @param <E> The event type handled by this pipeline.
  * @author lare96
  */
 public final class EventListenerPipeline<E extends Event> implements Iterable<EventListener<E>> {
 
     /**
-     * The asynchronous logger.
+     * The logger.
      */
     private static final Logger logger = LogManager.getLogger();
 
     /**
-     * The type of event that traverses this pipeline.
+     * The event type routed through this pipeline.
      */
     private final Class<E> eventType;
 
     /**
-     * The pipeline of listeners.
+     * The single high-priority listener (runs first).
+     * <p>
+     * This slot is reserved for "default behavior" for the event type.
+     */
+    private EventListener<E> priorityListener;
+
+    /**
+     * Normal-priority listeners (run after {@link #priorityListener} and before matchers).
      */
     private final List<EventListener<E>> listeners = new ArrayList<>();
 
     /**
-     * The Kotlin match listener. Serves as an optimization for key-based events.
+     * Low-priority listeners (run last).
+     */
+    private final List<EventListener<E>> lazyListeners = new ArrayList<>();
+
+    /**
+     * Matcher dispatch (optimization / routing layer for keyed events).
+     * <p>
+     * Defaults to {@link EventMatcher#defaultMatcher()}.
      */
     private EventMatcher<E> matcher;
 
     /**
      * Creates a new {@link EventListenerPipeline}.
      *
-     * @param eventType The type of the traversing event.
+     * @param eventType The event type routed through this pipeline.
      */
     public EventListenerPipeline(Class<E> eventType) {
         this.eventType = eventType;
@@ -56,97 +78,112 @@ public final class EventListenerPipeline<E extends Event> implements Iterable<Ev
     }
 
     /**
-     * Immediately dispatches the given event to this pipeline’s listeners.
+     * Dispatches {@code msg} immediately to this pipeline.
+     * <p>
+     * The event is temporarily associated with this pipeline for the duration of dispatch via
+     * {@link Event#setPipeline(EventListenerPipeline)}.
      *
-     * @param msg The event instance.
+     * @param msg The event instance to dispatch.
      */
     public void post(E msg) {
         try {
             msg.setPipeline(this);
-
-            // Attempt to match the event to a listener.
-            if (!matcher.match(msg)) {
-
-                // Event was not matched, post to other listeners.
-                for (EventListener<E> listener : listeners) {
-                    listener.apply(msg);
-                }
-            }
+            internalPost(msg);
         } catch (ScriptExecutionException e) {
-            handleException(e, false);
+            handleException(e);
         } finally {
             msg.setPipeline(null);
         }
     }
 
     /**
-     * Wraps dispatch logic in {@link Runnable} tasks for deferred execution.
-     *
-     * @param msg The event to dispatch.
-     * @return A list of dispatch tasks.
+     * Dispatch implementation without pipeline wiring/exception boundaries.
      */
-    public List<Runnable> lazyPost(E msg) {
-        List<Runnable> taskBuilder = new ArrayList<>();
-        if (matcher.has(msg)) {
-            taskBuilder.add(() -> matcher.match(msg));
-            return taskBuilder;
+    private void internalPost(E msg) {
+        // HIGH listener always runs first.
+        if (priorityListener != null) {
+            priorityListener.getListener().accept(msg);
         }
-        for (EventListener<E> eventListener : listeners) {
-            taskBuilder.add(() -> {
-                try {
-                    eventListener.apply(msg);
-                } catch (ScriptExecutionException e) {
-                    handleException(e, true);
-                }
-            });
+
+        // Then NORMAL listeners.
+        for (EventListener<E> listener : listeners) {
+            listener.apply(msg);
         }
-        return taskBuilder;
+
+        // Then matcher routing (key-based / filtered).
+        matcher.match(msg);
+
+        // Then LOW listeners.
+        for (EventListener<E> listener : lazyListeners) {
+            listener.apply(msg);
+        }
     }
 
     /**
-     * Handles a thrown {@link ScriptExecutionException} from plugins.
+     * Logs a thrown {@link ScriptExecutionException} with script attribution when available.
      *
      * @param e The exception to handle.
      */
-    private void handleException(ScriptExecutionException e, boolean lazy) {
+    private void handleException(ScriptExecutionException e) {
         Script script = e.getScript();
         if (script != null) {
-            String s = lazy ? "lazy-run" : "run";
             ClassInfo info = script.getInfo();
-            logger.warn(new ParameterizedMessage("Failed to {} a listener from script '{}' in package '{}'", s,
-                    info.getSimpleName(), info.getPackageName()), e);
+            logger.warn("Failed to run a listener from script '{}' in package '{}'",
+                    info.getSimpleName(), info.getPackageName(), e);
         } else {
             logger.catching(e);
         }
     }
 
     /**
-     * Adds a new listener to this pipeline. Usually invoked through a pipeline set.
+     * Adds {@code listener} to this pipeline based on its {@link EventPriority}.
+     * <p>
+     * Only one {@link EventPriority#HIGH} listener may exist per event type.
      *
-     * @param listener The listener.
+     * @param listener The listener to add.
      */
     public void add(EventListener<E> listener) {
-        listeners.add(listener);
+        switch (listener.getPriority()) {
+            case LOW:
+                lazyListeners.add(listener);
+                break;
+            case NORMAL:
+                listeners.add(listener);
+                break;
+            case HIGH:
+                if (priorityListener != null) {
+                    throw new IllegalStateException("Only one high priority event listener {" +
+                            listener.getEventType().getSimpleName() + "} can exist per event type!");
+                }
+                priorityListener = listener;
+                break;
+        }
     }
 
     /**
-     * Sets the match listener.
+     * Replaces the current matcher dispatch implementation.
      *
-     * @param newMatcher The new match listener.
+     * @param newMatcher The new matcher to use.
      */
     public void setMatcher(EventMatcher<E> newMatcher) {
         matcher = newMatcher;
     }
 
     /**
-     * @return The size of the pipeline.
+     * Returns the number of listeners in this pipeline.
+     *
+     * @return The number of listeners.
      */
     public int size() {
-        return listeners.size();
+        int size = listeners.size() + lazyListeners.size() + matcher.getSize();
+        if(priorityListener != null) {
+            size++;
+        }
+        return size;
     }
 
     /**
-     * @return The type of event that traverses this pipeline.
+     * @return The event type routed through this pipeline.
      */
     public Class<E> getEventType() {
         return eventType;

@@ -38,7 +38,7 @@ class PartyPeteAction(private val npc: Npc) : Action<Npc>(npc, ActionType.NORMAL
             null -> {}
             DropPartyOption -> {
                 val secondsLeft = DropPartyOption.secondsLeft ?: return false
-                npc.forceChat(when {
+                npc.speak(when {
                                   secondsLeft == 0 -> "The drop party has started! Everyone come join!"
                                   secondsLeft < 60 -> "The drop party is starting in $secondsLeft seconds!"
                                   secondsLeft < 3600 -> "The drop party is starting in ${secondsLeft / 60} minutes!"
@@ -48,7 +48,7 @@ class PartyPeteAction(private val npc: Npc) : Action<Npc>(npc, ActionType.NORMAL
 
             else -> {
                 if (rand(4) == 0) {
-                    npc.forceChat(MESSAGES.random()(PartyRoom.option!!.description))
+                    npc.speak(MESSAGES.random()(PartyRoom.option!!.description))
                 }
             }
         }
@@ -70,7 +70,7 @@ val PARTY_ROOM_SPAWN = Position(2734, 3476, 0)
  * Teleports a player to the party room.
  */
 fun teleport(plr: Player) {
-    plr.interfaces.close()
+    plr.overlays.closeWindows()
     plr.move(PartyRoom.TELEPORT_POSITIONS.random())
     plr.sendMessage("You are teleported to the party room.")
 }
@@ -88,7 +88,7 @@ fun talk(plr: Player, npc: Npc) {
                  if (PartyRoom.option == null) "Hello mister! Is there anything I can do for you?"
                  else "Yay! The ${PartyRoom.option!!.description} event is under way!")
             .options("Can you take me to the party room?", { talkAboutTeleporting(plr) },
-                     "No thanks.", { plr.interfaces.close() }).open()
+                     "No thanks.", { plr.overlays.closeWindows() }).open()
     }
 }
 

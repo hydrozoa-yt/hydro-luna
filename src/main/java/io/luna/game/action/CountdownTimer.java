@@ -3,10 +3,9 @@ package io.luna.game.action;
 import io.luna.game.model.mob.Mob;
 
 public  class CountdownTimer extends Action<Mob> {
-
     private long start;
     private long remaining;
-
+// todo nee ds testing!!
     public CountdownTimer(Mob mob, long start) {
         super(mob, ActionType.SOFT);
         this.start = start;

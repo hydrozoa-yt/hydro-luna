@@ -1,7 +1,6 @@
 package io.luna.game.model.mob.block;
 
 import io.luna.game.model.Position;
-import io.luna.game.model.mob.Player;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
 import io.luna.net.codec.ByteMessage;
 import io.luna.net.codec.ValueType;
@@ -21,16 +20,18 @@ public final class ExactMovementUpdateBlock extends UpdateBlock {
     }
 
     @Override
-    public void encodeForPlayer(Player player, ByteMessage msg) {
-        Position lastRegion = player.getLastRegion();
-        ExactMovement movement = unwrap(player.getExactMovement());
-        msg.put(movement.getStartPosition().getLocalX(lastRegion), ValueType.ADD);
-        msg.put(movement.getStartPosition().getLocalY(lastRegion), ValueType.NEGATE);
-        msg.put(movement.getEndPosition().getLocalX(lastRegion), ValueType.SUBTRACT);
-        msg.put(movement.getEndPosition().getLocalY(lastRegion));
-        msg.putShort(movement.getDurationStart());
-        msg.putShort(movement.getDurationEnd(), ValueType.ADD);
-        msg.put( movement.getDirection().toForcedMovementId());
+    public void encodeForPlayer(ByteMessage msg, UpdateBlockData data) {
+        Position lastRegion = data.move.getLastRegion();
+        Position start = data.move.getStartPosition();
+        Position end = data.move.getEndPosition();
+
+        msg.put(start.getLocalX(lastRegion), ValueType.ADD);
+        msg.put(start.getLocalY(lastRegion), ValueType.NEGATE);
+        msg.put(end.getLocalX(lastRegion), ValueType.SUBTRACT);
+        msg.put(end.getLocalY(lastRegion));
+        msg.putShort(data.move.getDurationStart());
+        msg.putShort(data.move.getDurationEnd(), ValueType.ADD);
+        msg.put(data.move.getDirection().toForcedMovementId());
     }
 
     @Override

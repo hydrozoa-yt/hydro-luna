@@ -1,31 +1,20 @@
 package io.luna.game.model.mob;
 
-import com.google.common.base.MoreObjects;
-import com.google.common.util.concurrent.ListenableFuture;
 import io.luna.game.model.Direction;
-import io.luna.game.model.Entity;
 import io.luna.game.model.EntityType;
 import io.luna.game.model.Locatable;
 import io.luna.game.model.Position;
-import io.luna.game.model.Region;
-import io.luna.game.model.collision.CollisionManager;
-import io.luna.game.model.path.AStarPathfindingAlgorithm;
-import io.luna.game.model.path.EuclideanHeuristic;
-import io.luna.game.model.path.PathfindingAlgorithm;
-import io.luna.game.model.path.SimplePathfindingAlgorithm;
-import io.luna.util.RandomUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Deque;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Queue;
 
 /**
- * A model representing an implementation of the walking queue.
+ * A model representing a walking queue for a {@link Mob}.
+ * <p>
+ * This class does <strong>not</strong> perform any path validation or collision checks. It will blindly follow
+ * whatever sequence of {@link Position} tiles it is given. Higher-level systems (such as {@link WalkingNavigator}) are
+ * responsible for generating valid paths and avoiding blocked tiles.
  *
  * @author lare96
  * @author Graham
@@ -33,405 +22,217 @@ import java.util.Queue;
 public final class WalkingQueue {
 
     /**
-     * The logger.
-     */
-    private static final Logger logger = LogManager.getLogger();
-
-    /**
-     * A model representing a step in the walking queue.
-     */
-    public static final class Step {
-
-        /**
-         * The x coordinate.
-         */
-        private final int x;
-
-        /**
-         * The y coordinate.
-         */
-        private final int y;
-
-        /**
-         * Creates a new {@link Step}.
-         *
-         * @param x The x coordinate.
-         * @param y The y coordinate.
-         */
-        public Step(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        /**
-         * Creates a new {@link Step}.
-         *
-         * @param position The position.
-         */
-        public Step(Position position) {
-            this(position.getX(), position.getY());
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (obj instanceof Step) {
-                Step other = (Step) obj;
-                return x == other.x && y == other.y;
-            }
-            return false;
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(x, y);
-        }
-
-        @Override
-        public String toString() {
-            return MoreObjects.toStringHelper(this)
-                    .add("x", x)
-                    .add("y", y)
-                    .toString();
-        }
-
-        /**
-         * @return The x coordinate.
-         */
-        public int getX() {
-            return x;
-        }
-
-        /**
-         * @return The y coordinate.
-         */
-        public int getY() {
-            return y;
-        }
-    }
-
-    /**
-     * A deque of current steps.
-     */
-    private final Deque<Step> current = new ArrayDeque<>();
-
-    /**
-     * A deque of previous steps.
-     */
-    private final Deque<Step> previous = new ArrayDeque<>();
-
-    /**
-     * The collision manager.
-     */
-    private final CollisionManager collisionManager;
-    private final PathfindingAlgorithm pathfindingAlgorithm;
-
-    /**
-     * The mob.
+     * The mob that owns this walking queue.
      */
     private final Mob mob;
 
     /**
-     * If movement is locked.
+     * Whether movement is currently locked for this mob.
+     * <p>
+     * When locked, all queued steps are cleared and no movement is processed.
      */
     private boolean locked;
 
     /**
-     * If the current path is a running path.
+     * Whether the current path should be processed as a running path.
+     * <p>
+     * When true, up to two steps will be processed per cycle (if run energy allows it).
      */
-    private boolean runningPath;
+    private boolean running;
 
     /**
-     * The current lazy walking task result.
+     * The deque of upcoming steps to process for this mob.
+     * <p>
+     * This represents the forward walking path. Each position is a tile the mob will move to in order as {@link #process()}
+     * is called every cycle.
      */
-    private ListenableFuture<?> lazyWalkResult;
+    private final Deque<Position> current = new ArrayDeque<>();
 
     /**
-     * Create a new {@link WalkingQueue}.
+     * The deque of previously visited steps for this mob.
+     * <p>
+     * History is used when queuing a new path that starts on a tile the mob recently walked through. In that case, the
+     * queue can "backtrack" using this history to smoothly splice the new path into the old one without teleporting
+     * or snapping.
+     */
+    private final Deque<Position> history = new ArrayDeque<>();
+
+    /**
+     * Creates a new {@link WalkingQueue} for the specified mob.
      *
-     * @param mob The mob.
+     * @param mob The owning mob.
      */
     public WalkingQueue(Mob mob) {
         this.mob = mob;
-        collisionManager = mob.getWorld().getCollisionManager();
-        if (mob instanceof Player) {
-            this.pathfindingAlgorithm = new AStarPathfindingAlgorithm(collisionManager, new EuclideanHeuristic());
-        } else {
-            this.pathfindingAlgorithm = new SimplePathfindingAlgorithm(collisionManager);
-        }
     }
 
     /**
-     * Forces the mob to walk {@code 1} square in a random traversable NESW direction. If none of the directions are
-     * traversable, the mob will not move.
-     */
-    public void walkRandomDirection() {
-        CollisionManager collision = mob.getWorld().getCollisionManager();
-        Direction[] directions = RandomUtils.shuffle(Arrays.copyOf(Direction.NESW, Direction.NESW.length));
-        for (Direction dir : directions) {
-            if (collision.traversable(mob.getPosition(), EntityType.NPC, dir)) {
-                walk(mob.getPosition().translate(1, dir));
-                break;
-            }
-        }
-    }
-
-    /**
-     * A function that determines your next walking and running directions, as well as your new position after
-     * taking steps.
+     * Processes this walking queue for a single game cycle.
+     * <p>
+     * This method:
+     * <ol>
+     *     <li>Aborts if the mob is stationary or movement-locked, clearing the queue.</li>
+     *     <li>Consumes one step as the walking step, updating the mob's walking direction.</li>
+     *     <li>If running is enabled and the player has enough run energy, consumes a second step
+     *         as the running step, updating the mob's running direction.</li>
+     *     <li>Updates the mob's position and maintains the history of visited tiles.</li>
+     *     <li>Depletes or restores run energy for players as appropriate.</li>
+     * </ol>
      */
     public void process() {
-        // TODO clean up function, traversable checks don't work
-        // TODO retest traversable checks, figure out a better way for runningPath to work thats less clunky
-        if (mob instanceof Npc && mob.asNpc().isStationary()) {
-            return;
-        }
-        Step currentStep = new Step(mob.getPosition());
-
-        Direction walkingDirection = Direction.NONE;
-        Direction runningDirection = Direction.NONE;
-
-        boolean restoreEnergy = true;
-        Step nextStep = current.poll();
-        if (nextStep != null) {
-            walkingDirection = Direction.between(currentStep, nextStep);
-            boolean blocked = false;// !collisionManager.traversable(mob.getPosition(), EntityType.NPC, walkingDirection);
-            if (blocked) {
-                walkingDirection = Direction.NONE;
-                clear();
-            } else {
-                previous.add(nextStep);
-                currentStep = nextStep;
-                mob.setLastDirection(walkingDirection);
-
-                if (runningPath) {
-                    nextStep = decrementRunEnergy() ? current.poll() : null;
-                    if (nextStep != null) {
-                        runningDirection = Direction.between(currentStep, nextStep);
-                        blocked = false;// !collisionManager.traversable(mob.getPosition(), EntityType.NPC, runningDirection);
-                        if (blocked) {
-                            runningDirection = Direction.NONE;
-                            clear();
-                        } else {
-                            restoreEnergy = false;
-                            previous.add(nextStep);
-                            currentStep = nextStep;
-                            mob.setLastDirection(runningDirection);
-                        }
-                    } else {
-                        runningPath = false;
-                    }
-                }
-            }
-        }
-
-        if (restoreEnergy) {
+        // Ignore processing and clear queue for stationary NPCs and locked mobs.
+        if ((mob instanceof Npc && mob.asNpc().isStationary()) || locked || mob.isLocked()) {
+            clear();
+            mob.setWalkingDirection(Direction.NONE);
+            mob.setRunningDirection(Direction.NONE);
             incrementRunEnergy();
-        }
-
-        mob.setWalkingDirection(walkingDirection);
-        mob.setRunningDirection(runningDirection);
-
-        Position newPosition = new Position(currentStep.getX(), currentStep.getY(), mob.getPosition().getZ());
-        mob.setPosition(newPosition);
-    }
-
-    /**
-     * Uses one of the pathfinder implementations in order to build a path to walk to the {@code destination}. For
-     * destinations exceeding {@link Region#SIZE}, {@link #lazyWalk(Position)} will be used instead. <strong>Still must be
-     * called from the game thread to ensure thread safety.</strong>
-     *
-     * @param destination The destination position.
-     */
-    public void walk(Position destination) {
-        int distance = destination.computeLongestDistance(mob.getPosition());
-        if (distance > Region.SIZE) {
-            lazyWalk(destination);
-        } else {
-            addPath(findPath(destination));
-        }
-    }
-
-    /**
-     * Uses the smart pf implementations in order to build a path to walk to the {@code target}.
-     *
-     * @param target The destination target.
-     */
-    public boolean walkUntilReached(Locatable target) {
-        Deque<Step> newPath = new ArrayDeque<>();
-        Deque<Position> path = pathfindingAlgorithm.find(mob.getPosition(), target.location());
-        Position lastPosition = mob.getPosition();
-        boolean reached;
-        boolean isEntity = target instanceof Entity;
-        for (; ; ) {
-            Position nextPosition = path.poll();
-            // TODO check for obstacles?
-            reached = isEntity ? collisionManager.reached(lastPosition, lastPosition, (Entity) target, 1) :
-                    target.location().isWithinDistance(lastPosition, 1);
-            if (nextPosition == null || reached) {
-                break;
-            }
-            newPath.add(new Step(nextPosition));
-            lastPosition = nextPosition;
-        }
-        if (reached) {
-            addPath(newPath);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Will asynchronously build a path to {@code destination} and only move the mob once the path is available.
-     *
-     * @param destination The destination position.
-     */
-    public void lazyWalk(Position destination) {
-        if (lazyWalkResult != null && !lazyWalkResult.isDone()) {
-            logger.warn("Existing lazy walk request in progress.");
             return;
         }
-        ListenableFuture<Deque<Step>> pathResult = mob.getService().submit(() -> findPath(destination));
-        pathResult.addListener(() -> {
-            try {
-                addPath(pathResult.get());
-            } catch (Exception e) {
-                logger.catching(e);
-            }
-        }, mob.getService().getExecutor());
-        lazyWalkResult = pathResult;
-    }
 
-    /**
-     * Forces the mob to walk to {@code target}, interacting with it from {@code facing}.
-     *
-     * @param target The target.
-     * @param facing The interaction direction.
-     */
-    public void walk(Entity target, Optional<Direction> facing) {
-        int sizeX = mob.sizeX();
-        int sizeY = mob.sizeY();
-        int targetSizeX = target.sizeX();
-        int targetSizeY = target.sizeY();
-        Position position = mob.getPosition();
-        int height = position.getZ();
-        Position targetPosition = target.getPosition();
+        Position currentStep = mob.getPosition();
+        int plane = mob.getZ();
 
-        Direction direction = facing.orElse(Direction.between(position, targetPosition));
-        int dx = direction.getTranslation().getX();
-        int dy = direction.getTranslation().getY();
-
-        int targetX = dx <= 0 ? targetPosition.getX() : targetPosition.getX() + targetSizeX - 1;
-        int targetY = dy <= 0 ? targetPosition.getY() : targetPosition.getY() + targetSizeY - 1;
-        int offsetX;
-        if (dx < 0) {
-            offsetX = -sizeX;
-        } else if (dx > 0) {
-            offsetX = 1;
-        } else {
-            offsetX = 0;
+        Position nextStep = current.poll();
+        if (nextStep == null) {
+            // No steps to process this cycle.
+            mob.setWalkingDirection(Direction.NONE);
+            mob.setRunningDirection(Direction.NONE);
+            incrementRunEnergy();
+            return;
         }
-        int offsetY;
-        if (dy < 0) {
-            offsetY = -sizeY;
-        } else if (dy > 0) {
-            offsetY = 1;
+
+        // Process a single step.
+        Direction firstStepDir = Direction.between(currentStep, nextStep);
+        history.add(nextStep);
+        mob.setLastDirection(firstStepDir);
+        mob.setWalkingDirection(firstStepDir);
+        currentStep = nextStep;
+
+        // If we're running, process another step.
+        if (running && decrementRunEnergy() && (nextStep = current.poll()) != null) {
+            Direction nextStepDir = Direction.between(currentStep, nextStep);
+            history.add(nextStep);
+            mob.setLastDirection(nextStepDir);
+            mob.setRunningDirection(nextStepDir);
+            currentStep = nextStep;
         } else {
-            offsetY = 0;
+            mob.setRunningDirection(Direction.NONE);
+            incrementRunEnergy(); // Restore run energy while not running.
         }
-        walk(new Position(targetX + offsetX, targetY + offsetY, height));
+
+        mob.setPosition(currentStep.setZ(plane));
     }
 
     /**
-     * Forces the mob to walk to {@code target}, interacting with it from the current direction they're facing.
+     * Adds a pre-computed path to this walking queue.
+     * <p>
+     * <strong>Important:</strong> This method does <em>not</em> validate the path for correctness (no collision or
+     * clipping checks). The walking queue will blindly attempt to walk every tile that is queued here. To safely queue
+     * a destination-based path generated by the pathfinder, use {@link WalkingNavigator#walk(Locatable, boolean)} instead.
      *
-     * @param target The target.
+     * @param path The path to walk as a sequence of absolute {@link Position} tiles.
      */
-    public void walk(Entity target) {
-        if (target instanceof Mob) {
-            Mob targetMob = (Mob) target;
-            walk(target, Optional.of(targetMob.getLastDirection()));
-        } else {
-            walk(target, Optional.empty());
-        }
-    }
-
-    /**
-     * Forces the mob to walk to {@code target}, interacting with them from behind.
-     *
-     * @param target The target.
-     */
-    public void walkBehind(Mob target) {
-        Direction direction = target.getLastDirection().opposite();
-        walk(target, Optional.of(direction));
-    }
-
-    /**
-     * Adds {@code path} to the walking queue.
-     *
-     * @param path The path to walk.
-     */
-    public void addPath(Deque<Step> path) {
-        int size = path.size();
-        if (size == 1) {
-            addFirst(path.poll());
-        } else if (size > 1) {
+    public void addPath(Deque<Position> path) {
+        if (!path.isEmpty()) {
             addFirst(path.poll());
             for (; ; ) {
-                Step nextStep = path.poll();
-                if (nextStep == null) {
+                Position nextPosition = path.poll();
+                if (nextPosition == null) {
                     break;
                 }
-                add(nextStep);
+                add(nextPosition);
             }
         }
     }
 
     /**
-     * Clears the current and previous steps.
+     * Adds a single step in the specified direction to this walking queue.
+     * <p>
+     * <strong>Important:</strong> This is a low-level helper that does <em>not</em> do any collision, clipping, or
+     * reachability checks. The resulting step may be invalid if the destination tile is blocked. Higher-level systems
+     * are responsible for ensuring that this call only produces valid movement.
+     *
+     * @param direction The direction to step from the mob's current position.
+     */
+    public void addStep(Direction direction) {
+        addFirst(mob.getPosition().translate(1, direction));
+    }
+
+    /**
+     * Clears both the current and previous steps for this walking queue.
+     * <p>
+     * After calling this, the mob will remain stationary until new steps are queued.
      */
     public void clear() {
         current.clear();
-        previous.clear();
+        history.clear();
     }
 
     /**
-     * Adds an initial step to this walking queue.
+     * Returns the number of remaining queued tiles in this walking queue.
      *
-     * @param step The step to add.
+     * @return The amount of remaining steps.
      */
-    private void addFirst(Step step) {
+    public int size() {
+        return current.size();
+    }
+
+    /**
+     * Returns whether there are no remaining steps in this walking queue.
+     *
+     * @return {@code true} if this walking queue is empty, otherwise {@code false}.
+     */
+    public boolean isEmpty() {
+        return size() == 0;
+    }
+
+    /**
+     * Adds an initial step to this walking queue, potentially backtracking through the movement history.
+     * <p>
+     * Semantics:
+     * <ul>
+     *     <li>Clears the current queue.</li>
+     *     <li>Walks backwards through {@link #history} until it finds the requested tile, collecting the intermediate
+     *     tiles used to reach that point.</li>
+     *     <li>If the tile is found in history, replays those backtracked steps into {@link #current} so the mob can
+     *     smoothly walk back to that tile and then continue from there.</li>
+     *     <li>If the tile is not found in history, simply starts a new path from that tile.</li>
+     * </ul>
+     *
+     * @param step The first step of the new path.
+     */
+    private void addFirst(Position step) {
         current.clear();
-        Queue<Step> backtrack = new ArrayDeque<>();
+        Queue<Position> backtrack = new ArrayDeque<>();
         for (; ; ) {
-            Step prev = previous.pollLast();
+            Position prev = history.pollLast();
             if (prev == null) {
                 break;
             }
             backtrack.add(prev);
-            if (prev.equals(step)) {
+            if (prev.getX() == step.getX() && prev.getY() == step.getY()) {
                 backtrack.forEach(this::add);
-                previous.clear();
+                history.clear();
                 return;
             }
         }
-        previous.clear();
+        history.clear();
         add(step);
     }
 
     /**
      * Adds a non-initial step to this walking queue.
+     * <p>
+     * The supplied position is an absolute destination tile. If that destination is more than one tile away from the
+     * last queued step, this method will fill in all intermediate tiles so that the resulting path is continuous.
      *
-     * @param next The step to add.
+     * @param next The next step to add, as an absolute position.
      */
-    private void add(Step next) {
-        Step last = current.peekLast();
+    private void add(Position next) {
+        Position last = current.peekLast();
         if (last == null) {
-            last = new Step(mob.getPosition());
+            last = mob.getPosition();
         }
-
         int nextX = next.getX();
         int nextY = next.getY();
         int deltaX = nextX - last.getX();
@@ -451,14 +252,20 @@ public final class WalkingQueue {
             } else if (deltaY > 0) {
                 deltaY--;
             }
-            current.add(new Step(nextX - deltaX, nextY - deltaY));
+            current.add(new Position(nextX - deltaX, nextY - deltaY));
         }
     }
 
     /**
-     * A function that implements an algorithm to deplete run energy.
+     * Depletes run energy for a player if they are running.
+     * <p>
+     * The depletion rate is based on the player's carried weight. If run energy reaches zero, this method will:
+     * <ul>
+     *     <li>Set the player's run energy to {@code 0}.</li>
+     *     <li>Disable running on the player.</li>
+     * </ul>
      *
-     * @return {@code false} if the player can no longer run.
+     * @return {@code true} if the player still has run energy remaining and can continue running, otherwise {@code false}.
      */
     private boolean decrementRunEnergy() {
         if (mob.getType() != EntityType.PLAYER) {
@@ -469,8 +276,8 @@ public final class WalkingQueue {
             return false;
         }
         double totalWeight = player.getWeight();
-        double energyReduction = 0.117 * 2 * Math
-                .pow(Math.E, 0.0027725887222397812376689284858327062723020005374410 * totalWeight);
+        double energyReduction = 0.117 * 3 * Math
+                .pow(Math.E, 0.0037725887222397812376689284858327062723020005374410 * totalWeight);
         double newValue = player.getRunEnergy() - energyReduction;
         if (newValue <= 0.0) {
             player.setRunEnergy(0.0, true);
@@ -482,7 +289,10 @@ public final class WalkingQueue {
     }
 
     /**
-     * A function that implements an algorithm to restore run energy.
+     * Restores run energy for a player while they are not running.
+     * <p>
+     * The restoration rate is based on the player's current Agility level. Run energy is clamped to a maximum of
+     * {@code 100.0}.
      */
     private void incrementRunEnergy() {
         if (mob.getType() != EntityType.PLAYER)
@@ -504,63 +314,36 @@ public final class WalkingQueue {
     }
 
     /**
-     * Determines the optimal pathfinder to use and finds a path to {@code target}.
+     * Sets whether the current path should be treated as a running path.
+     * <p>
+     * When enabled, {@link #process()} will attempt to consume up to two tiles per cycle, subject to available run
+     * energy.
      *
-     * @param target The target.
-     * @return The path.
+     * @param running {@code true} to enable running, {@code false} to disable.
      */
-    private Deque<Step> findPath(Position target) {
-        Deque<Position> positionPath = pathfindingAlgorithm.find(mob.getPosition(), target);
-        Deque<Step> stepPath = new ArrayDeque<>(positionPath.size());
-        for (; ; ) {
-            // TODO remove step class?
-            Position next = positionPath.poll();
-            if (next == null) {
-                break;
-            }
-            stepPath.add(new Step(next));
-        }
-        return stepPath;
+    public void setRunning(boolean running) {
+        this.running = running;
     }
 
     /**
-     * Returns the current size of the walking queue.
+     * Returns whether movement is currently locked for this mob.
      *
-     * @return The amount of remaining steps.
-     */
-    public int getRemainingSteps() {
-        return current.size();
-    }
-
-    /**
-     * Returns whether there are remaining steps.
-     *
-     * @return {@code true} if this walking queue is empty.
-     */
-    public boolean isEmpty() {
-        return getRemainingSteps() == 0;
-    }
-
-    /**
-     * Sets if the current path is a running path.
-     *
-     * @param runningPath The new value.
-     */
-    public void setRunningPath(boolean runningPath) {
-        this.runningPath = runningPath;
-    }
-
-    /**
-     * @return {@code true} if movement is locked.
+     * @return {@code true} if movement is locked, otherwise {@code false}.
      */
     public boolean isLocked() {
         return locked;
     }
 
     /**
-     * Sets if movement is locked.
+     * Locks or unlocks movement for this mob.
+     * <p>
+     * When movement is locked:
+     * <ul>
+     *     <li>All queued steps and history are cleared.</li>
+     *     <li>{@link #process()} will not move the mob until it is unlocked.</li>
+     * </ul>
      *
-     * @param locked The new value.
+     * @param locked {@code true} to lock movement and clear the queue, {@code false} to unlock.
      */
     public void setLocked(boolean locked) {
         if (locked) {

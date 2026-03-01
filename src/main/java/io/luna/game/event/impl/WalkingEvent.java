@@ -1,59 +1,93 @@
 package io.luna.game.event.impl;
 
+import io.luna.game.model.Position;
 import io.luna.game.model.mob.Player;
-import io.luna.game.model.mob.WalkingQueue.Step;
 
 import java.util.Deque;
 
 /**
- * An event sent when a player walks.
+ * A {@link PlayerEvent} implementation sent when a player clicks to walk somewhere.
  *
  * @author lare96
  */
 public final class WalkingEvent extends PlayerEvent implements ControllableEvent {
 
     /**
-     * The walking path.
+     * The source of the walking click.
      */
-    private final Deque<Step> path;
+    public enum WalkingOrigin {
+
+        /**
+         * A movement command where the source is a click on the main game screen. Represented by a yellow X.
+         */
+        MAIN_SCREEN,
+
+        /**
+         * A movement command where the source is an interaction click (player, npc, object, ground item, etc).
+         * Represented by a red X.
+         */
+        INTERACTION,
+
+        /**
+         * A movement command where the source is a minimap click. Represented by a red flag on the minimap.
+         */
+        MINIMAP;
+
+        /**
+         * Determines the correct {@link WalkingOrigin} based on the given {@code opcode}.
+         *
+         * @param opcode The opcode.
+         * @return The correct walking origin.
+         */
+        public static WalkingOrigin forOpcode(int opcode) {
+            switch (opcode) {
+                case 213:
+                    return MINIMAP;
+                case 28:
+                    return MAIN_SCREEN;
+                case 247:
+                    return INTERACTION;
+                default:
+                    throw new IllegalStateException("Invalid opcode [" + opcode + "]");
+            }
+        }
+    }
+
+    /**
+     * The steps to be sent to the walking queue.
+     */
+    private final Deque<Position> steps;
+    /**
+     * The walking origin.
+     */
+    private final WalkingOrigin origin;
 
     /**
      * If the player is running.
      */
     private final boolean running;
 
-    /**
-     * The path size.
-     */
-    private final int pathSize;
-
-    /**
-     * The opcode.
-     */
-    private final int opcode;
 
     /**
      * Creates a new {@link WalkingEvent}.
      *
      * @param player The player.
-     * @param path The path that the player will walk.
+     *
+     * @param origin The walking origin.
      * @param running If the player is running.
-     * @param pathSize The path size.
-     * @param opcode The opcode.
      */
-    public WalkingEvent(Player player, Deque<Step> path, boolean running, int pathSize, int opcode) {
+    public WalkingEvent(Player player, Deque<Position> steps, WalkingOrigin origin, boolean running) {
         super(player);
-        this.path = path;
+        this.steps = steps;
+        this.origin = origin;
         this.running = running;
-        this.pathSize = pathSize;
-        this.opcode = opcode;
     }
 
     /**
-     * @return The walking path.
+     * @return The walking origin.
      */
-    public Deque<Step> getPath() {
-        return path;
+    public WalkingOrigin getOrigin() {
+        return origin;
     }
 
     /**
@@ -64,16 +98,9 @@ public final class WalkingEvent extends PlayerEvent implements ControllableEvent
     }
 
     /**
-     * @return The path size.
+     * @return The walking path converted from a nested array to a queue of positions.
      */
-    public int getPathSize() {
-        return pathSize;
-    }
-
-    /**
-     * @return The opcode.
-     */
-    public int getOpcode() {
-        return opcode;
+    public Deque<Position> getSteps() {
+        return steps;
     }
 }

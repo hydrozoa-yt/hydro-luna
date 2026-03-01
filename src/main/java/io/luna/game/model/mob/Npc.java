@@ -1,70 +1,91 @@
 package io.luna.game.model.mob;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.collect.Sets;
 import io.luna.LunaContext;
+import io.luna.game.action.Action;
 import io.luna.game.model.Direction;
 import io.luna.game.model.Entity;
 import io.luna.game.model.EntityType;
 import io.luna.game.model.Position;
+import io.luna.game.model.area.Area;
 import io.luna.game.model.def.NpcCombatDefinition;
 import io.luna.game.model.def.NpcDefinition;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
+import io.luna.game.model.mob.wandering.DumbWanderingAction;
+import io.luna.game.model.mob.wandering.PatrolAction;
+import io.luna.game.model.mob.wandering.SmartWanderingAction;
+import io.luna.game.model.mob.wandering.WanderingFrequency;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
 /**
- * A model representing a non-player-controlled mob.
+ * Represents a non-player-controlled mob in the world.
  *
  * @author lare96
  */
 public class Npc extends Mob {
 
     /**
-     * The spawn identifier.
+     * The base spawn identifier for this NPC.
+     * <p>
+     * This ID is used when resetting transformations back to the original definition.
      */
     private final int id;
 
     /**
-     * The spawn position.
+     * The base spawn position for this NPC.
+     * <p>
+     * This is the position the NPC was created at and is typically used as the origin for
+     * respawning and wandering radius calculations.
      */
     private final Position basePosition;
 
     /**
-     * The direction this NPC should always face. NPCs with this value present will not move.
+     * The direction this NPC should always face, if present.
+     * <p>
+     * When this value is present, the NPC is considered stationary and will not perform wandering movements. It may
+     * still turn to face interacting entities if logic elsewhere overrides this behaviour.
      */
     private Optional<Direction> defaultDirection = Optional.empty();
 
     /**
-     * The definition.
+     * The current NPC definition (may change if the NPC is transformed).
      */
     private NpcDefinition definition;
 
     /**
-     * The combat definition.
+     * The current combat definition for this NPC, if any.
+     * <p>
+     * This may be empty for non-combat or non-attackable NPCs.
      */
     private Optional<NpcCombatDefinition> combatDefinition;
 
     /**
-     * If this NPC should respawn.
+     * The time, in ticks until this NPC respawns after death.
+     * <p>
+     * A value of {@code -1} usually indicates no respawn time or that respawning is handled elsewhere.
      */
-    private boolean respawn;
+    private int respawnTicks;
 
     /**
-     * The NPC wander radius.
+     * The set of human players that currently have this NPC in their local view.
+     * <p>
+     * This is maintained as a concurrent set and can be used for things like targeted updates, proximity-based
+     * behaviour, or analytics.
      */
-    private int wanderRadius; // TODO NPC wandering
-    private int respawnTicks = -1;
+    private final Set<Player> localHumans = Sets.newConcurrentHashSet();
 
     /**
      * Creates a new {@link Npc}.
      *
-     * @param context The context instance.
-     * @param id The identifier.
-     * @param position The position.
+     * @param context The server context.
+     * @param id The base NPC identifier.
+     * @param position The initial spawn position.
      */
     public Npc(LunaContext context, int id, Position position) {
         super(context, EntityType.NPC);
@@ -74,17 +95,13 @@ public class Npc extends Mob {
         // Set definition values.
         definition = NpcDefinition.ALL.retrieve(id);
         combatDefinition = NpcCombatDefinition.ALL.get(id);
+        respawnTicks = combatDefinition.map(NpcCombatDefinition::getRespawnTime).filter(it -> it > 0).orElse(-1);
 
         // Set skill levels.
         setSkills();
 
         // Set position.
         setPosition(position);
-    }
-
-    @Override
-    public void onTeleport(Position newPosition) {
-        teleporting = true;
     }
 
     @Override
@@ -112,7 +129,6 @@ public class Npc extends Mob {
                 add("id", getId()).toString();
     }
 
-
     @Override
     public final int size() {
         return definition.getSize();
@@ -130,7 +146,7 @@ public class Npc extends Mob {
 
     @Override
     public void reset() {
-        transformId = OptionalInt.empty();
+
     }
 
     @Override
@@ -144,10 +160,10 @@ public class Npc extends Mob {
     }
 
     @Override
-    public void transform(int id) {
-        definition = NpcDefinition.ALL.retrieve(id);
-        combatDefinition = NpcCombatDefinition.ALL.get(id);
-        transformId = OptionalInt.of(id);
+    public void transform(int requestedId) {
+        definition = NpcDefinition.ALL.retrieve(requestedId);
+        combatDefinition = NpcCombatDefinition.ALL.get(requestedId);
+        transformId = requestedId;
         setSkills();
         flags.flag(UpdateFlag.TRANSFORM);
     }
@@ -158,53 +174,31 @@ public class Npc extends Mob {
     }
 
     /**
-     * Determines if {@code entity} is within the viewing cone of this NPC. This is based on the direction that this
-     * NPC is currently facing. An example of this; if this NPC's back is turned to {@code entity}, this function will return
-     * {@code false}.
+     * Determines if the given {@link Entity} is within the viewing cone of this NPC.
      * <p>
-     * If this NPC is interacting with someone currently, returns {@code false} unless the interacting entity
-     * matches {@code entity}.
+     * The viewing cone is derived from the NPC's last movement direction. If the entity is directly behind the NPC
+     * (outside that cone), this method returns {@code false}. If the entity occupies the same tile, it always
+     * returns {@code true}.
+     * <p>
+     * If this NPC is currently interacting with an entity, the interacting entity is always considered visible even
+     * if outside the normal viewing cone.
      *
-     * @param entity The entity.
-     * @return {@code true} if the entity can be seen.
+     * @param entity The entity to test visibility against.
+     * @param viewingDistance The maximum distance in tiles at which the NPC can see the entity.
+     * @return {@code true} if the entity is within range and inside the NPC's viewing cone.
      */
-    public boolean isInViewCone(Entity entity) {
-        if (!position.isWithinDistance(entity.getPosition(), Position.VIEWING_DISTANCE / 2)) {
+    public boolean inViewCone(Entity entity, int viewingDistance) {
+        if (!position.isWithinDistance(entity.getPosition(), viewingDistance)) {
             return false;
         }
 
         // Whoever we're interacting with takes priority.
-        if (getInteractingWith().isPresent()) {
-            return getInteractingWith().get().equals(entity);
+        if (Objects.equals(getInteractingWith(), entity)) {
+            return true;
         }
 
         // Get deltas representing where the entity is relative to this NPC.
-        int deltaX = entity.getPosition().getX() - position.getX();
-        int deltaY = entity.getPosition().getY() - position.getY();
-        if (deltaX > 0) {
-            deltaX = 1;
-        }
-        if (deltaY > 0) {
-            deltaY = 1;
-        }
-        if (deltaX < 0) {
-            deltaX = -1;
-        }
-        if (deltaY < 0) {
-            deltaY = -1;
-        }
-
-        // Get the direction that matches the relative direction.
-        // Ie. Entity is to the WEST of this NPC.
-        Direction relativeDir = Direction.NONE;
-        for (Direction dir : Direction.ALL) {
-            if (dir.getTranslation().getX() == deltaX &&
-                    dir.getTranslation().getY() == deltaY) {
-                relativeDir = dir;
-                break;
-            }
-        }
-
+        Direction relativeDir = Direction.between(entity.getPosition(), position);
         if (relativeDir == Direction.NONE) {
             // On top of the entity, always seen.
             return true;
@@ -216,7 +210,19 @@ public class Npc extends Mob {
     }
 
     /**
-     * Sets all the combat skill levels.
+     * Determines if the given {@link Entity} is within this NPC's viewing cone, using the default
+     * {@link Position#VIEWING_DISTANCE}.
+     *
+     * @param entity The entity to test visibility against.
+     * @return {@code true} if the entity is within the default viewing distance and inside the viewing cone.
+     */
+    public boolean inViewCone(Entity entity) {
+        return inViewCone(entity, Position.VIEWING_DISTANCE);
+    }
+
+    /**
+     * Sets the NPC's combat-related skills (attack, strength, defence, ranged, magic, hitpoints) based on its current
+     * {@link NpcCombatDefinition}, if one is present.
      */
     private void setSkills() {
         // Set the attack, strength, defence, ranged, and magic levels.
@@ -238,103 +244,152 @@ public class Npc extends Mob {
     }
 
     /**
-     * @return The base identifier.
+     * Returns the base identifier for this NPC.
+     * <p>
+     * This is the ID the NPC was created with, and is used when resetting transformations.
+     *
+     * @return The base NPC identifier.
      */
     public int getBaseId() {
         return id;
     }
 
     /**
-     * @return The base position. The one the class was created with.
+     * Returns the base spawn position for this NPC.
+     * <p>
+     * This is the position the NPC was created at and is usually the center of its wandering radius and respawn
+     * location.
+     *
+     * @return The base spawn position.
      */
     public Position getBasePosition() {
         return basePosition;
     }
 
     /**
-     * @return The identifier.
+     * Returns the current NPC identifier, which may differ from {@link #getBaseId()} if the NPC has been transformed.
+     *
+     * @return The current NPC identifier from the active definition.
      */
     public int getId() {
         return definition.getId();
     }
 
     /**
-     * @return The definition.
+     * Returns the active {@link NpcDefinition} for this NPC.
+     *
+     * @return The current NPC definition.
      */
     public NpcDefinition getDefinition() {
         return definition;
     }
 
     /**
-     * @return The combat definition.
+     * Returns the active {@link NpcCombatDefinition} for this NPC, if any.
+     *
+     * @return An {@link Optional} containing the combat definition, or empty if none exists.
      */
     public Optional<NpcCombatDefinition> getCombatDef() {
         return combatDefinition;
     }
 
     /**
-     * @return {@code true} if this NPC respawns, {@code false} otherwise.
-     */
-    public boolean isRespawn() {
-        return respawn;
-    }
-
-    /**
-     * @return {@code true} if this NPC doesn't move, {@code false} otherwise.
+     * Determines if this NPC is stationary.
+     * <p>
+     * An NPC is considered stationary if it has a {@link #defaultDirection} set, meaning it is expected to always
+     * face that direction and not wander.
+     *
+     * @return {@code true} if this NPC does not move, {@code false} otherwise.
      */
     public boolean isStationary() {
         return defaultDirection.isPresent();
     }
 
     /**
-     * @return The direction this NPC should always face. NPCs with this value set will not move.
+     * Returns the direction this NPC should always face, if configured.
+     * <p>
+     * NPCs with this value set are treated as stationary by wandering logic.
+     *
+     * @return An {@link Optional} containing the default facing direction, or empty if none is set.
      */
     public Optional<Direction> getDefaultDirection() {
         return defaultDirection;
     }
 
     /**
-     * Sets the direction this NPC should always face. NPCs with this value set will not move.
+     * Sets the default facing direction for this NPC.
+     * <p>
+     * NPCs with a default direction set are considered stationary by wandering logic and will not be scheduled
+     * for movement unless the direction is cleared.
+     *
+     * @param defaultDirection The default direction, or {@link Optional#empty()} to allow movement.
      */
     public void setDefaultDirection(Optional<Direction> defaultDirection) {
         this.defaultDirection = defaultDirection;
     }
 
     /**
-     * Forces this NPC to respawn when killed.
+     * Sets the remaining respawn ticks for this NPC.
+     * <p>
+     * How this value is decremented and acted upon is controlled by higher-level NPC or world management code.
      *
-     * @return This instance, for chaining.
+     * @param respawnTicks The number of ticks until this NPC should respawn.
      */
-    public Npc setRespawning() {
-        respawn = true;
-        return this;
-    }
-
     public void setRespawnTicks(int respawnTicks) {
         this.respawnTicks = respawnTicks;
     }
 
+    /**
+     * Returns the remaining respawn ticks for this NPC.
+     *
+     * @return The number of ticks until respawn, or {@code -1} if not applicable.
+     */
     public int getRespawnTicks() {
         return respawnTicks;
     }
 
     /**
-     * Forces this NPC to start wandering. This will undo its current {@link #defaultDirection}. The radius must be
-     * 0 or above.
+     * Starts a wandering behaviour for this NPC within the given radius.
+     * <p>
+     * This method:
+     * <ul>
+     *     <li>Validates that the radius is non-negative.</li>
+     *     <li>Interrupts any existing wandering {@link Action} such as {@link DumbWanderingAction},
+     *     {@link SmartWanderingAction} or {@link PatrolAction}.</li>
+     *     <li>Clears the {@link #defaultDirection} so the NPC is no longer considered stationary.</li>
+     *     <li>Constructs an {@link Area} centered on the current position with the given radius.</li>
+     *     <li>Submits a {@link SmartWanderingAction} if the area is larger than {@code 64x64}
+     *     (size > 4096), otherwise submits a {@link DumbWanderingAction}.</li>
+     * </ul>
      *
-     * @return This instance, for chaining.
+     * @param radius The wandering radius in tiles. Must be 0 or greater.
+     * @param frequency The {@link WanderingFrequency} controlling how often the NPC
+     * attempts to move within the area.
      */
-    public Npc setWandering(int radius) {
+    public void startWandering(int radius, WanderingFrequency frequency) {
         checkArgument(radius >= 0, "Radius must be 0 or above.");
-        if (wanderRadius != radius) { // only change if different from current
-            if (radius == 0) { // TODO wandering code
-                // cancel wander action
-            } else {
-                // start or modify "action"
-            }
-
-            setDefaultDirection(Optional.empty());
+        if (actions.contains(DumbWanderingAction.class) ||
+                actions.contains(SmartWanderingAction.class) ||
+                actions.contains(PatrolAction.class)) {
+            actions.interruptWeak();
         }
-        return this;
+        setDefaultDirection(Optional.empty());
+
+        Area wanderingArea = Area.of(basePosition, radius);
+        if (wanderingArea.size() >= 4096) {
+            // If our wandering area is bigger than 64x64, use smart wanderer.
+            actions.submit(new SmartWanderingAction(this, wanderingArea, frequency));
+        } else {
+            actions.submit(new DumbWanderingAction(this, wanderingArea, frequency));
+        }
+    }
+
+    /**
+     * Returns the set of human players that currently have this NPC in their local view.
+     *
+     * @return A concurrent {@link Set} of players that currently see this NPC.
+     */
+    public Set<Player> getLocalHumans() {
+        return localHumans;
     }
 }

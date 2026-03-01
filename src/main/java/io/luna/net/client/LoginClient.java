@@ -64,7 +64,6 @@ public class LoginClient extends Client<LoginRequestMessage> {
     void onMessageReceived(LoginRequestMessage msg) {
         String username = msg.getUsername();
         String password = msg.getPassword();
-        var player = new Player(context, new PlayerCredentials(username, password));
 
         if (!username.matches("^[a-z0-9_ ]{1,12}$") ||
                 password.isEmpty() || password.length() > 20) {
@@ -72,6 +71,7 @@ public class LoginClient extends Client<LoginRequestMessage> {
             channel.close();
         } else {
             // Passed initial check, submit login request.
+            var player = new Player(context, new PlayerCredentials(username, password));
             loginService.submit(username, new LoginRequest(player, this, msg));
         }
     }
@@ -114,7 +114,7 @@ public class LoginClient extends Client<LoginRequestMessage> {
      * @return {@code true} if the final login response {@link LoginResponse#NORMAL}.
      */
     public boolean sendFinalLoginResponse(Player player, PlayerData data, LoginRequestMessage message) {
-        if (world.getPlayers().isFull()) {
+        if (world.isFull()) {
             sendLoginResponse(player, LoginResponse.WORLD_FULL);
             return false;
         } else if (world.getLogoutService().isSavePending(player.getUsername()) || world.getPlayer(player.getUsernameHash()).isPresent()) {

@@ -5,6 +5,7 @@ import api.attr.getValue
 import api.attr.setValue
 import api.predef.*
 import io.luna.game.model.def.NpcCombatDefinition
+import io.luna.game.model.item.shop.ShopInterface
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.dialogue.DialogueQueueBuilder
 import io.luna.game.model.mob.dialogue.Expression
@@ -15,11 +16,6 @@ import io.luna.game.model.mob.dialogue.Expression
  * @author lare96
  */
 object Slayer {
-
-    /**
-     * If specialized slayer equipment is needed in order to fight specific slayer monsters.
-     */
-    const val EQUIPMENT_NEEDED = true
 
     /**
      * The XP multiplier specifically for slayer.
@@ -40,7 +36,7 @@ object Slayer {
     /**
      * An attribute representing if tasks will be checked for difficulty before being assigned.
      */
-    var Player.difficultyChecking: Boolean by Attr.boolean(true).persist("slayer_difficulty_checking")
+    var Player.difficultyChecking: Boolean by Attr.boolean { true }.persist("slayer_difficulty_checking")
 
     /**
      * Decrement `1` from the remaining amount of tasks and adds XP for [npcId]. If the remaining amount of monsters is
@@ -104,7 +100,7 @@ object Slayer {
      * Opens the slayer equipment shop.
      */
     fun openShop(plr: Player) {
-        plr.interfaces.openShop("Slayer Equipment")
+        plr.overlays.open(ShopInterface(world, "Slayer Equipment"))
     }
 
     /**
@@ -208,9 +204,9 @@ object Slayer {
                     .options("Yes, please.", {
                         plr.activeSlayerTask = null
                         plr.completedSlayerTasks = 0
-                        it.interfaces.close()
+                        it.overlays.closeWindows()
                     },
-                             "No, thanks.", { it.interfaces.close() })
+                             "No, thanks.", { it.overlays.closeWindows() })
                     .open()
             } else if (plr.slayer.level < activeTask.level || !activeTask.difficulty(plr)) {
                 dialogue.npc(master.id,
@@ -226,7 +222,7 @@ object Slayer {
                                  "You can now get a new assignment when you want one.")
                             .then { plr.activeSlayerTask = null }
                     },
-                             "No, thanks, I want to try doing it.", { it.interfaces.close() }).open()
+                             "No, thanks, I want to try doing it.", { it.overlays.closeWindows() }).open()
             } else {
                 dialogue.npc(master.id,
                              Expression.DEFAULT,

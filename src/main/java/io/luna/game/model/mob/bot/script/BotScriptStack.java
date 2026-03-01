@@ -1,10 +1,10 @@
 package io.luna.game.model.mob.bot.script;
 
 import api.bot.BotScript;
+import api.bot.VoidBotScript;
 import io.luna.game.model.mob.bot.Bot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -25,7 +25,8 @@ import java.util.List;
  * <h3>Lifecycle</h3>
  * <ul>
  *     <li>Scripts are queued into the stack via {@link #pushHead(BotScript)} or {@link #pushTail(BotScript)}.</li>
- *     <li>Each game tick, {@link #process()} updates the currently active script.</li>
+ *     <li>Each game tick, {@link #process()} checks the status of the currently active script (we need to do this
+ *     because scripts use coroutines).</li>
  *     <li>When the active script finishes, it is removed and the next script in the queue starts automatically.</li>
  * </ul>
  *
@@ -90,16 +91,25 @@ public final class BotScriptStack {
      * @param loadedBuffer The serialized script snapshots to restore.
      */
     public void load(List<BotScriptSnapshot<?>> loadedBuffer) {
+        buffer.clear();
         BotScript<?>[] loadedScripts = new BotScript<?>[loadedBuffer.size()];
         for (BotScriptSnapshot<?> snapshot : loadedBuffer) {
             String scriptClass = snapshot.getScriptClass();
+            if (scriptClass.equals("null")) {
+                // Dynamic script was here, temporarily hold a void script in its place.
+                loadedScripts[snapshot.getIndex()] = new VoidBotScript(bot);
+                continue;
+            }
             try {
                 loadedScripts[snapshot.getIndex()] = scriptManager.loadScript(scriptClass, bot, snapshot.getData());
             } catch (Exception e) {
-                logger.error(new ParameterizedMessage("Error loading persisted script [{}]", scriptClass), e);
+                logger.error("Error loading persisted script [{}]", scriptClass, e);
             }
         }
         buffer.addAll(Arrays.asList(loadedScripts));
+
+        // Remove all void scripts after to maintain order.
+        buffer.removeIf(script -> script instanceof VoidBotScript);
     }
 
     /**
@@ -114,6 +124,10 @@ public final class BotScriptStack {
         List<BotScriptSnapshot<?>> snapshots = new ArrayList<>(buffer.size());
         for (BotScript<?> script : buffer) {
             Object snapshot = script.snapshot();
+            if(snapshot == null) {
+                snapshots.add(new BotScriptSnapshot<>(index++, "null", "null"));
+                continue;
+            }
             snapshots.add(new BotScriptSnapshot<>(index++, script.getClass().getName(), snapshot));
         }
         return snapshots;
@@ -144,31 +158,22 @@ public final class BotScriptStack {
      * it will be removed and the next script (if present) will begin on the next tick.
      * <p>
      * This should be invoked once per game tick.
-     *
-     * @return {@code true} if there are no scripts left in the buffer and activity selection can
-     * proceed, {@code false} otherwise or if this stack is shut down.
      */
-    public boolean process() {
+    public void process() {
         if (shutdown) {
-            return false;
+            return;
         }
         BotScript<?> current = buffer.peek();
         if (current != null) {
             if (current.isIdle() || current.isInterrupted()) {
                 // Script is idle or interrupted, start it and don't proceed.
                 current.start();
-                return false;
-            } else if (current.isRunning()) {
-                // Script is running, don't proceed.
-                return false;
-            } else if (current.isFinished()) {
+            }
+            if (current.isFinished()) {
                 // Script is done, if buffer is empty proceed, otherwise wait.
                 buffer.removeFirst();
-                return buffer.isEmpty();
             }
         }
-        // No scripts left in the buffer, we can proceed to coordinators.
-        return true;
     }
 
     /**
@@ -181,8 +186,8 @@ public final class BotScriptStack {
     }
 
     /**
-     * Pushes a {@link BotScript} to the <strong>head</strong> of the stack,
-     * immediately interrupting the current script.
+     * Pushes a {@link BotScript} to the <strong>head</strong> of the stack, immediately interrupting the current
+     * script.
      * <p>
      * The interrupted script is paused (not removed) and will resume once the new script completes. High-priority
      * scripts should use this method.

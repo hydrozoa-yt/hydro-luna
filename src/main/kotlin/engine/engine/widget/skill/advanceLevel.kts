@@ -2,6 +2,7 @@ package engine.widget.skill
 
 import api.predef.*
 import game.player.Jingles.*
+import io.luna.game.event.EventPriority
 import io.luna.game.event.impl.SkillChangeEvent
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.Skill
@@ -44,7 +45,7 @@ val levelUpTable = listOf(
 /**
  * Milestone jingle levels.
  */
-val MILESTONE_LEVELS = setOf(25, 50, 75, 99)
+val MILESTONE_LEVELS = setOf(15, 25, 50, 60, 70, 75, 80, 85, 90, 92, 95, 99)
 
 /**
  * Music sent when the player reaches one of [MILESTONE_LEVELS]. In real RS, sent when the player has
@@ -110,7 +111,7 @@ fun advanceLevel(plr: Player, skillId: Int, oldLevel: Int) {
 
         // Open level up widget.
         val levelUpData = levelUpTable[skillId]
-        plr.interfaces.open(LevelUpInterface(skillId, newLevel, levelUpData))
+        plr.overlays.open(LevelUpInterface(skillId, newLevel, levelUpData))
 
         // Play jingle.
         val jingle = if (MILESTONE_LEVELS.contains(newLevel))
@@ -132,7 +133,7 @@ fun advanceLevel(plr: Player, skillId: Int, oldLevel: Int) {
 }
 
 // Check if they've advanced a level on skill change.
-on(SkillChangeEvent::class) {
+on(SkillChangeEvent::class, EventPriority.HIGH) {
     val plr = mob as? Player
     if (plr != null) {
         plr.queue(SkillUpdateMessageWriter(id))

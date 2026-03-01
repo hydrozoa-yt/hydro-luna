@@ -102,13 +102,13 @@ class StealFromAction(plr: Player, val obj: GameObject, val thievable: Thievable
      * Determines if nearby guards will be alerted by you stealing and if so, alerts them.
      */
     private fun alertGuards() {
-        val nearbyGuards = world.chunks.findViewable(mob.position, Npc::class).filter {
+        val nearbyGuards = world.findViewable(mob.position, Npc::class) {
             GUARD_NAMES.contains(it.definition.name) && it.definition.actions.contains("Attack")
         }
         for (guard in nearbyGuards) {
-            if (!world.collisionManager.raycast(guard.position, mob.position) && guard.isInViewCone(mob)) {
+            if (!world.collisionManager.raycast(guard.position, mob.position) && guard.inViewCone(mob)) {
                 // The guard can see the player.
-                guard.forceChat("Hey! Get your hands off there!")
+                guard.speak("Hey! Get your hands off there!")
                 guard.follow(mob)
                 break
             }

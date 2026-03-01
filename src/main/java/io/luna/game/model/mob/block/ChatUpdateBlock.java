@@ -1,6 +1,5 @@
 package io.luna.game.model.mob.block;
 
-import io.luna.game.model.mob.Player;
 import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
 import io.luna.net.codec.ByteMessage;
 import io.luna.net.codec.ValueType;
@@ -20,12 +19,11 @@ public final class ChatUpdateBlock extends UpdateBlock {
     }
 
     @Override
-    public void encodeForPlayer(Player player, ByteMessage msg) {
-        Chat chat = unwrap(player.getChat());
-        msg.putShort(chat.getColor() + chat.getEffect());
-        msg.put(player.getRights().getClientValue(), ValueType.NEGATE);
-        msg.put(chat.getMessage().length, ValueType.ADD);
-        msg.putBytes(chat.getMessage(), ValueType.ADD);
+    public void encodeForPlayer(ByteMessage msg, UpdateBlockData data) {
+        msg.putShort(data.chat.getColor() + data.chat.getEffect());
+        msg.put(data.chat.getRights(), ValueType.NEGATE);
+        msg.put(data.chat.getMessage().length, ValueType.ADD);
+        msg.putBytes(data.chat.getMessage(), ValueType.ADD);
     }
 
     @Override

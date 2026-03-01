@@ -24,11 +24,6 @@ class TeleOtherAction(private val source: Player, private val target: Player, pr
     companion object {
 
         /**
-         * Seconds that must be waited in-between teleother requests to the same person.
-         */
-        const val TELEOTHER_DELAY_SECONDS = 30
-
-        /**
          * An attribute representing all recent teleother requests sent by the player.
          */
         val Player.teleOtherRequests by Attr.map<Long, Long>()
@@ -48,7 +43,7 @@ class TeleOtherAction(private val source: Player, private val target: Player, pr
     override fun run(): Boolean {
         return when (executions) {
             0 -> {
-                val sound = LocalSound(ctx, Sounds.TELEOTHER, source.position,
+                val sound = LocalSound.of(ctx, Sounds.TELEOTHER, source.position,
                                        ChunkUpdatableView.globalView())
                 sound.display()
                 source.animation(Animations.CAST_TELEOTHER)

@@ -3,13 +3,14 @@ package io.luna.game.plugin;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
 import io.luna.LunaContext;
 import io.luna.game.event.EventListener;
 import io.luna.game.event.EventListenerPipelineSet;
 import io.luna.game.event.EventMatcherListener;
+import io.luna.game.model.mob.bot.BotManager;
+import io.luna.game.model.mob.bot.injection.BotContextInjector;
 import kotlin.script.templates.standard.ScriptTemplateWithArgs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -71,6 +72,7 @@ public final class PluginBootstrap {
         var gameService = context.getGame();
 
         loadPlugins();
+        loadInjectors();
 
         EventListenerPipelineSet oldPipelines = pluginManager.getPipelines();
         EventListenerPipelineSet newPipelines = bindings.getPipelines();
@@ -84,31 +86,29 @@ public final class PluginBootstrap {
      */
     private void loadPlugins() throws ReflectiveOperationException {
         // Search classpath for all scripts.
-        try (ScanResult result = new ClassGraph().enableClassInfo().disableJarScanning().scan()) {
-            Map<String, ClassInfo> infoScripts = new HashMap<>();
-            ArrayListMultimap<String, ClassInfo> pluginScripts = ArrayListMultimap.create();
+        Map<String, ClassInfo> infoScripts = new HashMap<>();
+        ArrayListMultimap<String, ClassInfo> pluginScripts = ArrayListMultimap.create();
 
-            // Load all runtime information about scripts.
-            loadScripts(result, infoScripts, pluginScripts);
+        // Load all runtime information about scripts.
+        loadScripts(infoScripts, pluginScripts);
 
-            // Ensure that all plugin scripts have an assigned info script.
-            validatePlugins(infoScripts, pluginScripts);
+        // Ensure that all plugin scripts have an assigned info script.
+        validatePlugins(infoScripts, pluginScripts);
 
-            // Load all build scripts and generate the plugin map.
-            ImmutableMap<String, Plugin> pluginMap = buildPluginMap(infoScripts, pluginScripts);
-            context.getPlugins().setPluginMap(pluginMap);
-        }
+        // Load all build scripts and generate the plugin map.
+        ImmutableMap<String, Plugin> pluginMap = buildPluginMap(infoScripts, pluginScripts);
+        context.getPlugins().setPluginMap(pluginMap);
     }
 
     /**
      * Loads runtime information about all compiled scripts.
      *
-     * @param result The scan result.
      * @param infoScripts The info script map.
      * @param pluginScripts The plugin script map.
      */
-    private void loadScripts(ScanResult result, Map<String, ClassInfo> infoScripts, ArrayListMultimap<String, ClassInfo> pluginScripts) {
-        for (ClassInfo scriptInfo : result.getSubclasses("kotlin.script.templates.standard.ScriptTemplateWithArgs")) {
+    private void loadScripts(Map<String, ClassInfo> infoScripts, ArrayListMultimap<String, ClassInfo> pluginScripts) {
+        ScanResult classpath = context.getServer().getClasspath();
+        for (ClassInfo scriptInfo : classpath.getSubclasses("kotlin.script.templates.standard.ScriptTemplateWithArgs")) {
             String packageName = scriptInfo.getPackageName();
             if (scriptInfo.getSimpleName().equals("Info_plugin")) {
                 // Resolve an info script.
@@ -162,9 +162,9 @@ public final class PluginBootstrap {
      * @param pluginScripts The plugin script map.
      * @return The plugin map.
      */
-    private ImmutableMap<String, Plugin> buildPluginMap
-    (Map<String, ClassInfo> infoScripts, ArrayListMultimap<String, ClassInfo> pluginScripts) throws
-            ReflectiveOperationException {
+    private ImmutableMap<String, Plugin> buildPluginMap(Map<String, ClassInfo> infoScripts,
+                                                        ArrayListMultimap<String, ClassInfo> pluginScripts)
+            throws ReflectiveOperationException {
         ImmutableMap.Builder<String, Plugin> pluginMap = ImmutableMap.builder();
         for (ClassInfo infoScriptClass : infoScripts.values()) {
             String packageName = infoScriptClass.getPackageName();
@@ -217,5 +217,19 @@ public final class PluginBootstrap {
         Class<ScriptTemplateWithArgs> scriptClass = scriptInfo.loadClass(ScriptTemplateWithArgs.class);
         ScriptTemplateWithArgs scriptDef = scriptClass.getConstructor(String[].class).newInstance((Object) scriptArgs);
         return new Script(context, packageName, scriptInfo, scriptDef);
+    }
+
+    /**
+     * Loads all {@link BotContextInjector} listeners.
+     */
+    private void loadInjectors() {
+        // Register all bot context injector listeners.
+        BotManager botManager = context.getWorld().getBotManager();
+        ImmutableList.Builder<BotContextInjector> injectorsBuilder = ImmutableList.builder();
+        for (BotContextInjector injector : bindings.getInjectors()) {
+            injectorsBuilder.add(injector);
+        }
+        botManager.getInjectorManager().setInjectors(injectorsBuilder.build());
+        bindings.getInjectors().clear();
     }
 }

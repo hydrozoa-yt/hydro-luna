@@ -12,6 +12,7 @@ import io.luna.net.msg.GameMessageWriter;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Represents a non-moving {@link Entity} type that is also a {@link ChunkUpdatable}.
@@ -168,7 +169,7 @@ public abstract class StationaryEntity extends Entity implements ChunkUpdatable 
      * We retain references to the original sets instead of flattening them, so that they implicitly stay updated as
      * players move in and out of view of this entity. This means we only have to build the returned list once.
      */
-    public final ImmutableList<Set<Player>> getSurroundingPlayers() { //todo test
+    public final ImmutableList<Set<Player>> getSurroundingPlayers() {
         if (surroundingPlayers == null) {
             ImmutableList.Builder<Set<Player>> builder = ImmutableList.builder();
             // Retrieve viewable chunks.
@@ -180,5 +181,13 @@ public abstract class StationaryEntity extends Entity implements ChunkUpdatable 
             surroundingPlayers = builder.build();
         }
         return surroundingPlayers;
+    }
+
+    public void forSurroundingPlayers(Consumer<Player> action) {
+        for (Set<Player> playerSet : getSurroundingPlayers()) {
+            for (Player player : playerSet) {
+                action.accept(player);
+            }
+        }
     }
 }

@@ -8,13 +8,14 @@ import io.luna.game.model.mob.varp.PersistentVarp
 import game.player.Messages
 import game.skill.magic.Magic
 import game.skill.magic.teleOther.TeleOtherAction.Companion.teleOtherRequests
+import io.luna.Luna
 import java.util.concurrent.TimeUnit
 
 /**
  * Opens the [TeleOtherInterface] for the [target].
  */
 fun open(source: Player, target: Player, type: TeleOtherType) {
-    if (target.interfaces.isStandardOpen || target.interfaces.isInputOpen) {
+    if (target.overlays.hasWindow()) {
         source.sendMessage(Messages.INTERACT_BUSY)
         return
     }
@@ -29,14 +30,14 @@ fun open(source: Player, target: Player, type: TeleOtherType) {
     val timestamp = source.teleOtherRequests[target.usernameHash]
     if (timestamp != null) {
         val elapsed = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - timestamp)
-        if (elapsed < TeleOtherAction.TELEOTHER_DELAY_SECONDS) {
+        if (elapsed < Luna.settings().skills().teleOtherThrottleSeconds()) {
             source.sendMessage("You have already recently sent a teleother request to this person.")
             return
         }
     }
     if (Magic.checkRequirements(source, type.level, type.requirements) != null) {
         source.teleOtherRequests[target.usernameHash] = System.nanoTime()
-        target.interfaces.open(TeleOtherInterface(source, target, type))
+        target.overlays.open(TeleOtherInterface(source, target, type))
         target.walking.clear()
     }
 }
@@ -45,9 +46,9 @@ fun open(source: Player, target: Player, type: TeleOtherType) {
  * Attempts to teleport [target] to the destination when accept is clicked.
  */
 fun clickAccept(target: Player) {
-    val openInterface = target.interfaces.get(TeleOtherInterface::class)
+    val openInterface = target.overlays[TeleOtherInterface::class]
     if (openInterface != null) {
-        target.interfaces.close()
+        target.overlays.closeWindows()
 
         val source = openInterface.source
         source.teleOtherRequests.remove(target.usernameHash)
@@ -64,11 +65,11 @@ fun clickAccept(target: Player) {
  * Declines the teleother request and notifies the sender.
  */
 fun clickDecline(target: Player) {
-    val openInterface = target.interfaces.get(TeleOtherInterface::class)
-    if (openInterface != null) {
-        target.interfaces.close()
-        openInterface.source.sendMessage("${target.username} has declined your teleother request.")
-        target.sendMessage("You have declined ${openInterface.source.username}'s teleother request.")
+    val teleInterface = target.overlays[TeleOtherInterface::class]
+    if (teleInterface != null) {
+        target.overlays.closeWindows()
+        teleInterface.source.sendMessage("${target.username} has declined your teleother request.")
+        target.sendMessage("You have declined ${teleInterface.source.username}'s teleother request.")
     }
 }
 

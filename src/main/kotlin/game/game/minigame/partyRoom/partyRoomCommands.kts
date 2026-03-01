@@ -10,7 +10,7 @@ import io.luna.game.model.mob.Player
  */
 fun lockLeverCmd(plr: Player) {
     PartyRoom.locked = !PartyRoom.locked
-    plr.newDialogue().empty("You have successfully ${if (PartyRoom.locked) "locked" else "unlocked"} the lever.").open()
+    plr.newDialogue().text("You have successfully ${if (PartyRoom.locked) "locked" else "unlocked"} the lever.").open()
 }
 
 /**
@@ -18,7 +18,7 @@ fun lockLeverCmd(plr: Player) {
  */
 fun lockChestCmd(plr: Player) {
     DropPartyOption.chest.locked = !DropPartyOption.chest.locked
-    plr.newDialogue().empty("You have successfully ${if (DropPartyOption.chest.locked) "locked" else "unlocked"} the chest.")
+    plr.newDialogue().text("You have successfully ${if (DropPartyOption.chest.locked) "locked" else "unlocked"} the chest.")
 }
 
 // All-in-one admin command for handling basic party room functions.
@@ -27,6 +27,6 @@ cmd("party_room", RIGHTS_ADMIN) {
         if (PartyRoom.locked) "Unlock lever" else "Lock lever", { lockLeverCmd(it) },
         if (DropPartyOption.chest.locked) "Lock chest" else "Unlock chest", { lockChestCmd(it) },
         "Pull lever", { PartyRoom.pullLever(it, null) },
-        "Open chest", { plr.interfaces.open(DropPartyInterface()) }
+        "Open chest", { plr.overlays.open(DropPartyInterface()) }
     ).open()
 }

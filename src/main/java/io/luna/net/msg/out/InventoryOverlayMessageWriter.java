@@ -1,11 +1,12 @@
 package io.luna.net.msg.out;
 
 import io.luna.game.model.mob.Player;
-import io.luna.game.model.mob.inter.InventoryOverlayInterface;
+import io.luna.game.model.mob.overlay.InventoryOverlayInterface;
 import io.luna.net.codec.ByteMessage;
 import io.luna.net.codec.ByteOrder;
 import io.luna.net.codec.ValueType;
 import io.luna.net.msg.GameMessageWriter;
+import io.netty.buffer.ByteBuf;
 
 /**
  * A {@link GameMessageWriter} implementation that opens an interface and overlays the inventory with
@@ -37,8 +38,8 @@ public final class InventoryOverlayMessageWriter extends GameMessageWriter {
     }
 
     @Override
-    public ByteMessage write(Player player) {
-        ByteMessage msg = ByteMessage.message(128);
+    public ByteMessage write(Player player, ByteBuf buffer) {
+        ByteMessage msg = ByteMessage.message(128, buffer);
         msg.putShort(interfaceId, ValueType.ADD);
         msg.putShort(overlayInterfaceId, ByteOrder.LITTLE, ValueType.ADD);
         return msg;

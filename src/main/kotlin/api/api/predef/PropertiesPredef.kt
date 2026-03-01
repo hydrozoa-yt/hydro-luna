@@ -3,19 +3,18 @@ package api.predef
 import io.luna.LunaServer
 import io.luna.game.event.EventListener
 import io.luna.game.event.EventMatcherListener
-import io.luna.game.model.EntityType
 import io.luna.game.model.item.Equipment
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Mob
-import io.luna.game.model.mob.PlayerInteraction
+import io.luna.game.model.mob.PlayerContextMenuOption
 import io.luna.game.model.mob.PlayerRights
 import io.luna.game.model.mob.Skill
+import io.luna.game.model.mob.bot.injection.BotContextInjector
 import io.luna.game.plugin.InfoScriptData
 import io.luna.game.plugin.KotlinBindings
 import io.luna.game.plugin.PluginBootstrap
 import io.luna.util.Rational
 import io.luna.util.ReflectionUtils
-import java.util.*
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -42,9 +41,14 @@ val logger = bindings.logger!!
 val scriptListeners: MutableList<EventListener<*>> = bindings.listeners!!
 
 /**
- * The script event listeners.
+ * The script event matcher listeners.
  */
 val scriptMatchers: MutableList<EventMatcherListener<*>> = bindings.matchers!!
+
+/**
+ * The script event injectors.
+ */
+val scriptInjectors: MutableList<BotContextInjector> = bindings.injectors!!
 
 /**
  * The info for the current build script being evaluated.
@@ -74,7 +78,7 @@ val world = ctx.world!!
 /**
  * The [GameService] instance.
  */
-val gameThread = ctx.game!!
+val gameService = ctx.game!!
 
 
 /* Player rights properties. */
@@ -85,10 +89,10 @@ val RIGHTS_DEV = PlayerRights.DEVELOPER
 
 
 /* Player interaction properties. */
-val INTERACTION_TRADE = PlayerInteraction.TRADE!!
-val INTERACTION_CHALLENGE = PlayerInteraction.CHALLENGE!!
-val INTERACTION_ATTACK = PlayerInteraction.ATTACK!!
-val INTERACTION_FOLLOW = PlayerInteraction.FOLLOW!!
+val OPTION_TRADE = PlayerContextMenuOption.TRADE!!
+val OPTION_CHALLENGE = PlayerContextMenuOption.CHALLENGE!!
+val OPTION_ATTACK = PlayerContextMenuOption.ATTACK!!
+val OPTION_FOLLOW = PlayerContextMenuOption.FOLLOW!!
 
 
 /* Skill id properties. */
@@ -205,7 +209,7 @@ val Equipment.hands: Item?
     get() = this[Equipment.HANDS]
 
 val Equipment.feet: Item?
-    get() = this[Equipment.FEET]
+    get() = this[Equipment.BOOTS]
 
 val Equipment.ring: Item?
     get() = this[Equipment.RING]

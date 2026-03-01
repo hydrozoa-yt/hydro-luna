@@ -2,8 +2,7 @@ package io.luna.net.msg.in;
 
 import io.luna.game.event.impl.DesignPlayerEvent;
 import io.luna.game.model.mob.Player;
-import io.luna.game.model.mob.PlayerAppearance.DesignPlayerInterface;
-import io.luna.game.model.mob.block.UpdateFlagSet.UpdateFlag;
+import io.luna.game.model.mob.block.PlayerAppearance.DesignPlayerInterface;
 import io.luna.net.msg.GameMessage;
 import io.luna.net.msg.GameMessageReader;
 
@@ -14,7 +13,6 @@ import io.luna.net.msg.GameMessageReader;
  * @author lare96
  */
 public final class DesignPlayerMessageReader extends GameMessageReader<DesignPlayerEvent> {
-// todo engine plugin
 
     @Override
     public DesignPlayerEvent decode(Player player, GameMessage msg) {
@@ -35,13 +33,6 @@ public final class DesignPlayerMessageReader extends GameMessageReader<DesignPla
 
     @Override
     public boolean validate(Player player, DesignPlayerEvent event) {
-        return player.getInterfaces().standardTo(DesignPlayerInterface.class).isPresent();
-    }
-
-    @Override
-    public void handle(Player player, DesignPlayerEvent event) {
-        player.getAppearance().setValues(event.getValues());
-        player.getFlags().flag(UpdateFlag.APPEARANCE);
-        player.getInterfaces().close();
+        return player.getOverlays().contains(DesignPlayerInterface.class);
     }
 }

@@ -3,7 +3,7 @@ package api.bot.action
 import api.bot.SuspendableCondition
 import api.predef.ext.*
 import io.luna.game.model.mob.bot.Bot
-import io.luna.game.model.mob.dialogue.OptionDialogueInterface
+import io.luna.game.model.mob.dialogue.OptionDialogue
 
 /**
  * A [BotActionHandler] implementation for widget related actions.
@@ -11,13 +11,16 @@ import io.luna.game.model.mob.dialogue.OptionDialogueInterface
 class BotWidgetActionHandler(private val bot: Bot, private val handler: BotActionHandler) {
 
     /**
-     * An action that forces a [Bot] to click one of the options on a [OptionDialogueInterface].
+     * An action that forces a [Bot] to click one of the options on a [OptionDialogue].
      *
      * @param option The option to click, between 1 and 5.
      */
     fun clickDialogueOption(option: Int): Boolean {
-        val activeInterface = bot.interfaces.get(OptionDialogueInterface::class) ?: return false
-        when (activeInterface.unsafeGetId()) {
+        if(OptionDialogue::class in bot.overlays) {
+
+        }
+        val activeInterface = bot.overlays[OptionDialogue::class] ?: return false
+        when (activeInterface.id) {
             14443 ->
                 when (option) {
                     1 -> bot.output.clickButton(14445)
@@ -49,7 +52,7 @@ class BotWidgetActionHandler(private val bot: Bot, private val handler: BotActio
                 }
 
             else -> {
-                bot.log("Unrecognized dialogue interface ${activeInterface.unsafeGetId()}.")
+                bot.log("Unrecognized dialogue interface ${activeInterface.id}.")
                 return false
             }
         }
@@ -70,8 +73,8 @@ class BotWidgetActionHandler(private val bot: Bot, private val handler: BotActio
      * Clicks the widget to close interfaces.
      */
     suspend fun clickCloseInterface(): Boolean {
-        if (bot.interfaces.isStandardOpen) {
-            val suspendCond = SuspendableCondition { !bot.interfaces.isStandardOpen }
+        if (bot.overlays.hasWindow()) {
+            val suspendCond = SuspendableCondition { !bot.overlays.hasWindow() }
             bot.output.sendCloseInterface()
             bot.log("Clicking close interface button.")
             return suspendCond.submit().await()

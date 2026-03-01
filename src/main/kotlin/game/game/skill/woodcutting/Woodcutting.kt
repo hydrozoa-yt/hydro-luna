@@ -1,10 +1,11 @@
 package game.skill.woodcutting
 
 import api.attr.Attr
-import io.luna.game.model.`object`.GameObject
 import game.skill.Skills
 import game.skill.woodcutting.cutTree.Axe
 import game.skill.woodcutting.cutTree.Tree
+import io.luna.Luna
+import io.luna.game.model.`object`.GameObject
 
 /**
  * Contains utility functions related to the woodcutting skill.
@@ -16,24 +17,7 @@ object Woodcutting {
     /**
      * An attribute representing how many logs are left in a tree.
      */
-    var GameObject.treeHealth: Int by Attr.int(-1)
-
-    /**
-     * Determines which method to use for handling tree stump behavior: OSRS-style or 317-style.
-     *
-     * If `true`, uses the 317 method: every tree has a flat 1-in-8 chance to fall when chopped, regardless of type.
-     * If `false`, uses the OSRS method: each tree has a [treeHealth] value that scales with its level, determining
-     * when it becomes a stump.
-     */
-    const val USE_317_TREE_STUMPS = false
-
-    /**
-     * The interval (in game ticks) between each attempt to cut a log while woodcutting.
-     *
-     * Lower values result in faster log collection, while higher values slow it down.
-     * A value of `4` matches the timing behavior in both 317 and OSRS.
-     */
-    const val CUT_SPEED_TICKS = 4
+    var GameObject.treeHealth: Int by Attr.int { -1 }
 
     /**
      * Simulate the result of woodcutting for [attempts] tries, and print the result.
@@ -47,7 +31,7 @@ object Woodcutting {
                 if (success(playerLevel, tree, axe)) {
                     logsChopped++
                 }
-                totalTicksElapsed += CUT_SPEED_TICKS
+                totalTicksElapsed += Luna.settings().skills().woodcuttingSpeed()
             }
 
             val avgTicksPerLog = if (logsChopped > 0) totalTicksElapsed.toDouble() / logsChopped else 0.0

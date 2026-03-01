@@ -7,13 +7,11 @@ import io.luna.game.GameSettings.PasswordStrength;
 import io.luna.game.LogoutService;
 import io.luna.game.model.Position;
 import io.luna.game.model.item.IndexedItem;
-import io.luna.game.model.mob.MusicTab;
 import io.luna.game.model.mob.Player;
 import io.luna.game.model.mob.PlayerPrivacy;
 import io.luna.game.model.mob.PlayerRights;
 import io.luna.game.model.mob.Skill;
 import io.luna.game.model.mob.Spellbook;
-import io.luna.game.model.mob.bot.script.BotScriptSnapshot;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.Duration;
@@ -28,7 +26,7 @@ import java.util.Map;
  *
  * @author lare96
  */
-public final class PlayerData {
+public class PlayerData {
 
     /* This should be avoided this unless necessary and attributes used instead. But if you wish to save player data
        the 'old' way simply declare a field then add it to the 'save' and 'load' functions. */
@@ -39,7 +37,6 @@ public final class PlayerData {
     public String lastIp;
     public Instant logoutTime;
     public int[] appearance;
-    public MusicTab musicTab;
     public List<IndexedItem> inventory;
     public List<IndexedItem> bank;
     public List<IndexedItem> equipment;
@@ -57,12 +54,6 @@ public final class PlayerData {
     public Map<String, Integer> varps;
     public Map<String, Object> attributes;
     public JsonArray potions;
-    public List<BotScriptSnapshot<?>> scripts; // Will always be empty for real players. TODO Should bots have their
-    // own saving? extend playerdata then override save method?
-
-    // Used by persistence classes to ignore temporary bots.
-    transient volatile boolean temporaryBot;
-    transient volatile boolean bot;
 
     /**
      * The username of the player this data belongs to.
@@ -82,15 +73,12 @@ public final class PlayerData {
      * Loads {@code player}'s data from this model.
      */
     public void load(Player player) {
-        // todo all these need to support reloading while online. Maybe make this dynamic?
-        // loader.add(() -> ...); add set/reload functions for efficiency? could just be a waste of time
         player.setDatabaseId(databaseId);
         player.setHashedPassword(password);
         player.setPosition(position);
         player.setRights(rights);
         player.setLastIp(lastIp);
         player.getAppearance().setValues(appearance);
-        player.setMusicTab(musicTab);
         player.getInventory().load(inventory);
         player.getBank().load(bank);
         player.getEquipment().load(equipment);
@@ -99,18 +87,15 @@ public final class PlayerData {
         player.getIgnores().addAll(ignores);
         player.setUnbanInstant(unbanInstant);
         player.setUnmuteInstant(unmuteInstant);
-        player.setRunEnergy(runEnergy, false);
-        player.setWeight(weight, false);
+        player.setRunEnergy(runEnergy, true);
+        player.setWeight(weight, true);
         player.getAttributes().load(attributes);
         player.getVarpManager().fromMap(varps);
-        player.updateSpellbook(spellbook, false);
+        player.updateSpellbook(spellbook, true);
         player.setTimePlayed(timePlayed);
         player.setCreatedAt(createdAt);
         player.setPrivacyOptions(privacyOptions);
         player.loadPotionsFromJson(potions);
-        if (player.isBot()) {
-            player.asBot().getScriptStack().load(scripts);
-        }
     }
 
     /**
@@ -132,8 +117,6 @@ public final class PlayerData {
             // We have a hashed password, use it.
             password = hashedPw;
         }
-        bot = player.isBot();
-        temporaryBot = bot && player.asBot().isTemporary();
 
         databaseId = player.getDatabaseId();
         position = player.getPosition();
@@ -141,7 +124,6 @@ public final class PlayerData {
         lastIp = player.getClient().getIpAddress();
         logoutTime = Instant.now();
         appearance = player.getAppearance().toArray();
-        musicTab = player.getMusicTab().copy();
         inventory = player.getInventory().toList();
         bank = player.getBank().toList();
         equipment = player.getEquipment().toList();
@@ -159,9 +141,6 @@ public final class PlayerData {
         createdAt = player.getCreatedAt();
         privacyOptions = player.getPrivacyOptions();
         potions = player.savePotionsToJson();
-        if (player.isBot()) {
-            scripts = player.asBot().getScriptStack().save();
-        }
         return this;
     }
 

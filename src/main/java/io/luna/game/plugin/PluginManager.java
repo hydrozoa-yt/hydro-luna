@@ -6,9 +6,8 @@ import io.luna.game.event.Event;
 import io.luna.game.event.EventListenerPipeline;
 import io.luna.game.event.EventListenerPipelineSet;
 import io.luna.game.model.World;
-import io.luna.game.model.mob.bot.speech.BotSpeechManager;
-
-import java.util.List;
+import io.luna.game.model.mob.bot.injection.BotContextInjectorManager;
+import io.luna.game.event.impl.InjectableEvent;
 
 import static java.util.Objects.requireNonNull;
 
@@ -54,24 +53,10 @@ public final class PluginManager {
             return;
         }
         pipeline.post(msg);
-
-        // Handle speech injectors.
-        BotSpeechManager speechManager = world.getBotManager().getSpeechManager();
-        speechManager.handleInjectors(msg);
-    }
-
-    /**
-     * Lazily traverses the event across its designated pipeline. See {@link EventListenerPipeline#lazyPost(Event)} for
-     * more info.
-     *
-     * @param msg The event to post.
-     */
-    public <E extends Event> List<Runnable> lazyPost(E msg) {
-        EventListenerPipeline<E> pipeline = (EventListenerPipeline<E>) pipelines.get(msg.getClass());
-        if (pipeline == null) {
-            return List.of();
+        if (msg instanceof InjectableEvent) {
+            BotContextInjectorManager injectorManager = world.getBotManager().getInjectorManager();
+            injectorManager.addEvent((InjectableEvent) msg);
         }
-        return pipeline.lazyPost(msg);
     }
 
     /**

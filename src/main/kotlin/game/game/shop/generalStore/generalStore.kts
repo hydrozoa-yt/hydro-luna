@@ -7,6 +7,7 @@ import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import io.luna.game.model.item.shop.BuyPolicy
 import io.luna.game.model.item.shop.Currency
 import io.luna.game.model.item.shop.RestockPolicy
+import io.luna.game.model.item.shop.ShopInterface
 
 /**
  * General store shop.
@@ -40,7 +41,7 @@ ShopHandler.create("General Store") {
 npc1(520) {
     plr.newDialogue()
         .npc(targetNpc.id, "Hi, here's what I have in stock for today!")
-        .then { it.interfaces.openShop("General Store") }.open()
+        .then { it.overlays.open(ShopInterface(world, "General Store")) }.open()
 }
 
 /**

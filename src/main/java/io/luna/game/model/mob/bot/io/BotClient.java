@@ -85,6 +85,7 @@ public final class BotClient extends GameClient {
             BotMessage<?> writer = pendingWriteMessages.poll();
             if (writer == null) {
                 break;
+
             }
             input.add(writer);
         }
