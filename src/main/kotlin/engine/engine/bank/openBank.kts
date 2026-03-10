@@ -79,7 +79,7 @@ fun areaInfoDialogue(plr: Player, id: Int) {
                               "branches outside of Varrock and telling us that our",
                               "signs were wrong. They acted as if we didn't know",
                               "what town we were in or something.").open()
-                 }).open()
+        }).open()
 }
 
 /**

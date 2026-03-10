@@ -209,7 +209,7 @@ public class UseSpellEvent extends PlayerEvent implements ControllableEvent {
      *
      * @author lare96
      */
-    public static final class MagicOnObjectEvent extends UseSpellEvent implements InteractableEvent{
+    public static final class MagicOnObjectEvent extends UseSpellEvent implements InteractableEvent {
 
         /**
          * The target object.

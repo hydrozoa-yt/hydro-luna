@@ -4,6 +4,7 @@ import api.predef.*
 import api.predef.ext.*
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import io.luna.game.model.*
+import io.luna.game.model.mob.wandering.*
 import java.util.*
 
 on(ServerLaunchEvent::class) {
@@ -14,5 +15,8 @@ on(ServerLaunchEvent::class) {
 
     // Dark wizards
     world.addNpc(174, 3086, 3238)
+    .startWandering(4, WanderingFrequency.NORMAL);
+
     world.addNpc(174, 3084, 3235)
+    .startWandering(4, WanderingFrequency.NORMAL);
 }
