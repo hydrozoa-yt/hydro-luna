@@ -17,6 +17,7 @@ import io.luna.game.model.mob.wandering.PatrolAction;
 import io.luna.game.model.mob.wandering.SmartWanderingAction;
 import io.luna.game.model.mob.wandering.WanderingFrequency;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -382,6 +383,22 @@ public class Npc extends Mob {
         } else {
             actions.submit(new DumbWanderingAction(this, wanderingArea, frequency));
         }
+    }
+
+    public void startPatrolling(List<Position> positions, WanderingFrequency frequency) {
+        checkArgument(positions != null, "Positions must not be null");
+        checkArgument(!positions.isEmpty(), "Positions must not be empty");
+        if (actions.contains(DumbWanderingAction.class) ||
+                actions.contains(SmartWanderingAction.class) ||
+                actions.contains(PatrolAction.class)) {
+            actions.interruptWeak();
+        }
+        setDefaultDirection(Optional.empty());
+
+        PatrolAction.Builder builder = new PatrolAction.Builder(this);
+        builder.addAll(positions);
+        builder.setFrequency(frequency);
+        actions.submit(builder.build());
     }
 
     /**
