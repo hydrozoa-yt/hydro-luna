@@ -8,6 +8,8 @@ import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.dialogue.Expression
 import io.luna.game.model.item.shop.*
 import io.luna.game.model.mob.wandering.*
+import java.time.*
+import java.time.temporal.*
 
 npc1(520) {
     plr.newDialogue()
@@ -23,6 +25,10 @@ npc1(521) {
 
 // Hans dialogue
 npc1(0) {
+    var daysPlayed = plr.timePlayed.toHours() / 24
+    var hoursPlayed = plr.timePlayed.toHours() % 24
+    var minutesPlayed = plr.timePlayed.toMinutes() % 60;
+    var daysSinceCreation = ChronoUnit.DAYS.between(plr.createdAt, Instant.now());
     plr.newDialogue()
         .npc(targetNpc.id, "Hello. What are you doing here?")
         .options(
@@ -48,8 +54,8 @@ npc1(0) {
                     )
                     .npc(
                         targetNpc.id,
-                        "You've spent x days, y hours, z minutes in the",
-                        "world since you arrived t days ago."
+                        "You've spent $daysPlayed days, $hoursPlayed hours, $minutesPlayed minutes in the",
+                        "world since you arrived $daysSinceCreation days ago."
                     )
                     .open()
             })
@@ -204,10 +210,12 @@ on(ServerLaunchEvent::class) {
         id = 520,
         x = 3212,
         y = 3245)
+        .startWandering(3, WanderingFrequency.NORMAL)
     world.addNpc(
         id = 521,
         x = 3212,
         y = 3248)
+        .startWandering(3, WanderingFrequency.NORMAL)
 
     // Hans
     world.addNpc(
