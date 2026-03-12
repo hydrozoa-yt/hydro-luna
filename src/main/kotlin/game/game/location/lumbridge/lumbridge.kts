@@ -11,12 +11,6 @@ import io.luna.game.model.mob.wandering.*
 import java.time.*
 import java.time.temporal.*
 
-npc1(520) {
-    plr.newDialogue()
-        .npc(targetNpc.id, "Hi, here's what I have in stock for today!")
-        .then { it.overlays.open(ShopInterface(world, "General Store"))}.open()
-}
-
 npc1(521) {
     plr.newDialogue()
         .npc(targetNpc.id, "I'm the assistant!")
@@ -210,12 +204,12 @@ on(ServerLaunchEvent::class) {
         id = 520,
         x = 3212,
         y = 3245)
-        .startWandering(3, WanderingFrequency.NORMAL)
+        .startWandering(8, WanderingFrequency.RAPID)
     world.addNpc(
         id = 521,
         x = 3212,
         y = 3248)
-        .startWandering(3, WanderingFrequency.NORMAL)
+        .startWandering(8, WanderingFrequency.RAPID)
 
     // Hans
     world.addNpc(
