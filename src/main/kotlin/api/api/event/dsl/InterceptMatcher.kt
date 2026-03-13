@@ -1,6 +1,7 @@
 package api.event.dsl
 
 import api.event.Matcher
+import api.predef.*
 import io.luna.game.event.Event
 import kotlin.reflect.KClass
 
@@ -10,7 +11,8 @@ import kotlin.reflect.KClass
  *
  * @author lare96
  */
-class InterceptMatcher<E : Event, K : Any>(private val eventType: KClass<E>, private val args: Iterable<K>) {
+class InterceptMatcher<E : Event, K : Any>(private val eventType: KClass<E>, private val args: Iterable<K>,
+                                           private val interaction: InteractionPolicySupplier) {
 
     /**
      * If a matcher exists for [eventType], map [args] to [action].
@@ -19,6 +21,6 @@ class InterceptMatcher<E : Event, K : Any>(private val eventType: KClass<E>, pri
         // Use the matcher, instead of registering (n) listeners.
         val matcher: Matcher<E, K> = Matcher.get(eventType)
 
-        args.forEach { matcher[it] = action }
+        args.forEach { matcher.set(it, action, interaction) }
     }
 }

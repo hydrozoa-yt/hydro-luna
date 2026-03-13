@@ -11,19 +11,19 @@ import kotlin.reflect.KClass
  *
  * @author lare96
  */
-class InterceptBy<E : Event>(private val eventType: KClass<E>) {
+class InterceptBy<E : Event>(private val eventType: KClass<E>, private val interaction: InteractionPolicySupplier) {
 
     /**
      * Filtering function that executes the event listener if the condition is `true`. Forwards to
      * [InterceptFilter].
      */
-    fun filter(cond: E.() -> Boolean) = InterceptFilter(eventType, cond, true)
+    fun filter(cond: E.() -> Boolean) = InterceptFilter(eventType, cond, true, interaction)
 
     /**
      * Filtering function that executes the event listener if the condition is `false`. Forwards to
      * [InterceptFilter].
      */
-    fun filterNot(cond: E.() -> Boolean) = InterceptFilter(eventType, cond, false)
+    fun filterNot(cond: E.() -> Boolean) = InterceptFilter(eventType, cond, false, interaction)
 
     /**
      * Use a [Matcher] to test the event on [args]. This function only works for event types that have a dedicated
@@ -33,7 +33,7 @@ class InterceptBy<E : Event>(private val eventType: KClass<E>) {
         if (!Matcher.has(eventType)) {
             throw ScriptException("There is no dedicated matcher for event type: ${eventType.simpleName}. Use 'filter' instead of 'match'.")
         }
-        return InterceptMatcher(eventType, args)
+        return InterceptMatcher(eventType, args, interaction)
     }
 
     /**

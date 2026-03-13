@@ -14,7 +14,8 @@ import kotlin.reflect.KClass
  */
 class InterceptFilter<E : Event>(private val eventType: KClass<E>,
                                  private val condition: E.() -> Boolean,
-                                 private val testValue: Boolean) {
+                                 private val testValue: Boolean,
+                                 private val interaction: InteractionPolicySupplier) {
 
     /**
      * Test condition, and run if satisfied!
@@ -25,6 +26,6 @@ class InterceptFilter<E : Event>(private val eventType: KClass<E>,
                 action(it)
             }
         }
-        scriptListeners += EventListener(eventType.java, wrappedAction, EventPriority.NORMAL)
+        scriptListeners += EventListener(eventType.java, wrappedAction, EventPriority.NORMAL, interaction)
     }
 }
