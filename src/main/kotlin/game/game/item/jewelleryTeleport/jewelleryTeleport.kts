@@ -66,7 +66,7 @@ fun teleport(plr: Player, destination: Pair<String, Position>, event: ItemClickE
     plr.inventory[event.index] = Item(nextId)
 }
 
-for (jewellery in TeleportJewellery.VALUES) {
+for (jewellery in TeleportJewellery.values()) {
     for (index in 0 until jewellery.items.size) {
         item4(jewellery.items[index]) { rub(plr, this, index, jewellery) }
     }
