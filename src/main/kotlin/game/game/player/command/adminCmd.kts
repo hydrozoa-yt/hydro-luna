@@ -122,6 +122,81 @@ cmd("move", RIGHTS_ADMIN) {
 }
 
 /**
+ * A command that moves a player to a different location by name.
+ */
+cmd("tele", RIGHTS_ADMIN) {
+    var x = -1
+    var y = -1
+    var z = 0
+    var target = getInputFrom(0).lowercase()
+    var foundTarget : Boolean = false
+
+    when(target) {
+        "varrock" -> {
+            x = 3210
+            y = 3424
+            foundTarget = true
+        }
+        "falador" -> {
+            x = 2964
+            y = 3378
+            foundTarget = true
+        }
+        "edgeville" -> {
+            x = 3093
+            y = 3493
+            foundTarget = true
+        }
+        "port_sarim" -> {
+            x = 3023
+            y = 3208
+            foundTarget = true
+        }
+        "al_kharid" -> {
+            x = 3293
+            y = 3174
+            foundTarget = true
+        }
+        "catherby" -> {
+            x = 2813
+            y = 3447
+            foundTarget = true;
+        }
+        "seers_village" -> {
+            x = 2708
+            y = 3492
+            foundTarget = true;
+        }
+        "canifis" -> {
+            x = 3506
+            y = 3496
+            foundTarget = true;
+        }
+        "rimmington" -> {
+            x = 2957
+            y = 3214
+            foundTarget = true;
+        }
+        "tzhaar" -> {
+            x = 2480
+            y = 5175
+            foundTarget = true;
+        }
+        "lumbridge" -> {
+            x = 3222
+            y = 3218
+            foundTarget = true;
+        }
+        else -> {
+            plr.sendMessage("Unkown location $target")
+        }
+    }
+    if (foundTarget) {
+        plr.move(Position(x, y, z))
+    }
+}
+
+/**
  * A command that moves a player up.
  */
 cmd("up", RIGHTS_ADMIN) {
