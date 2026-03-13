@@ -26,8 +26,9 @@ public final class CombatAction extends Action<Mob> {
             if (mob.getInteractingWith() instanceof Mob) {
                 Mob target = (Mob) mob.getInteractingWith();
 
-                target.damage(1, Hit.HitType.NORMAL);
-                target.getCombat().getDamageStack().push(mob, CombatDamage.simple(1, Hit.HitType.NORMAL, CombatDamageType.MELEE));
+                CombatDamage dmg = CombatDamage.calculated(target, mob, Hit.HitType.NORMAL, CombatDamageType.MELEE);
+                target.damage(dmg.getAmount(), Hit.HitType.NORMAL);
+                target.getCombat().getDamageStack().push(mob, dmg);
 
                 if (target.getHealth() <= 0) {
                     return true;
