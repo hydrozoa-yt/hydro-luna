@@ -5,25 +5,9 @@ import api.predef.ext.*
 import api.shop.dsl.ShopHandler
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import io.luna.game.model.item.shop.*
+import io.luna.game.model.mob.wandering.*
 
-ShopHandler.create("Brian's Battleaxe Bazaar.") {
-    buy = BuyPolicy.EXISTING
-    restock = RestockPolicy.DEFAULT
-    currency = Currency.COINS
-
-    sell {
-        "Bronze battleaxe" x 4
-        "Iron battleaxe" x 3
-        "Steel battleaxe" x 2
-        "Black battleaxe" x 1
-        "Mithril battleaxe" x 1
-        "Adamant battleaxe" x 1
-    }
-
-    open {
-        npc2 += 559
-    }
-}
+val shopkeeperId = 558
 
 ShopHandler.create("Gerrant's Fishy Business.") {
     buy = BuyPolicy.EXISTING
@@ -51,38 +35,13 @@ ShopHandler.create("Gerrant's Fishy Business.") {
     }
 
     open {
-        npc2 += 558
+        npc2 += shopkeeperId
     }
 }
 
-/**
- * Brian dialogue
- */
-npc1(559, {
+npc1(shopkeeperId, {
     plr.newDialogue()
-        .options(
-            "So, are you selling something?", {
-                plr.newDialogue()
-                    .player("So, are you selling something?")
-                    .npc(559, "Yep, take a lok at these great axes!")
-                    .then({it.overlays.open(ShopInterface(world, "Brian's Battleaxe Bazaar."))})
-                    .open()
-            },
-            "'Ello.", {
-                plr.newDialogue()
-                    .player("'Ello.")
-                    .npc(559, "'Ello!")
-                    .open()
-            })
-        .open()
-})
-
-/**
- * Gerrant dialogue
- */
-npc1(558, {
-    plr.newDialogue()
-        .npc(558, "Wecome! You can buy fishing equipment at my store.", "We'll also buy anything you catch off you.")
+        .npc(targetNpc.id, "Wecome! You can buy fishing equipment at my store.", "We'll also buy anything you catch off you.")
         .options(
             "Let's see what you've got then.", {
                 plr.newDialogue()
@@ -97,6 +56,6 @@ npc1(558, {
 })
 
 on(ServerLaunchEvent::class) {
-    world.addNpc(559, 3029, 3249)   // Brian
-    world.addNpc(558, 3015, 3225)   // Gerrant
+    world.addNpc(shopkeeperId, 3015, 3225)
+        .startWandering(3, WanderingFrequency.NORMAL)
 }

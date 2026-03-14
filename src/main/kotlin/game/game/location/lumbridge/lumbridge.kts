@@ -204,12 +204,12 @@ on(ServerLaunchEvent::class) {
         id = 520,
         x = 3212,
         y = 3245)
-        .startWandering(8, WanderingFrequency.RAPID)
+        .startWandering(8, WanderingFrequency.NORMAL)
     world.addNpc(
         id = 521,
         x = 3212,
         y = 3248)
-        .startWandering(8, WanderingFrequency.RAPID)
+        .startWandering(8, WanderingFrequency.NORMAL)
 
     // Hans
     world.addNpc(
