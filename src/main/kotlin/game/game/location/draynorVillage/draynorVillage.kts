@@ -16,7 +16,6 @@ on(ServerLaunchEvent::class) {
     // Dark wizards
     world.addNpc(174, 3086, 3238)
     .startWandering(4, WanderingFrequency.NORMAL);
-
     world.addNpc(174, 3084, 3235)
     .startWandering(4, WanderingFrequency.NORMAL);
 }

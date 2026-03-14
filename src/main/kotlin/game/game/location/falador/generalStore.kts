@@ -6,6 +6,7 @@ import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent
 import api.shop.dsl.ShopHandler
 import com.google.common.collect.ImmutableList
 import io.luna.game.model.item.shop.*
+import io.luna.game.model.mob.wandering.*
 
 val shopkeeperId = ImmutableList.of(524, 525)
 
@@ -58,7 +59,9 @@ on(ServerLaunchEvent::class) {
     world.addNpc(id = shopkeeperId.get(0),
                  x = 2959,
                  y = 3388)
+        .startWandering(3, WanderingFrequency.NORMAL)
     world.addNpc(id = shopkeeperId.get(1),
         x = 2958,
         y = 3388)
+        .startWandering(3, WanderingFrequency.NORMAL)
 }
