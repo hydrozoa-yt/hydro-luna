@@ -10,7 +10,6 @@ import io.luna.game.model.mob.dialogue.DialogueQueueBuilder.DialogueOption
 import io.luna.util.StringUtils
 import game.skill.magic.Magic.teleport
 
-
 /**
  * Invoked when the player initially rubs the jewellery. Forwards to [openDialogue].
  */
