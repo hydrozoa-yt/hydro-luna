@@ -3,7 +3,9 @@ package io.luna.game.model.mob.combat;
 import api.combat.magic.TeleBlockAction;
 import engine.combat.prayer.CombatPrayerSet;
 import engine.controllers.MultiCombatAreaListener;
+import game.skill.magic.EquipmentRequirement;
 import game.skill.magic.Magic;
+import game.skill.magic.SpellRequirement;
 import io.luna.game.model.def.AmmoDefinition;
 import io.luna.game.model.def.CombatSpellDefinition;
 import io.luna.game.model.item.DynamicItem;
@@ -142,7 +144,18 @@ public final class PlayerCombatContext extends CombatContext {
         if (spell == null || spell == CombatSpellDefinition.NONE) {
             throw new IllegalStateException("Combat spell is null or NONE during magic combat state.");
         }
-        List<Item> required = Magic.INSTANCE.checkRequirements(player, spell.getLevel(), spell.getRequired());
+        boolean useAutocast = autocastSpell != null;
+        boolean equippedCorrect = true;
+        if (useAutocast) {
+            for (SpellRequirement req : autocastSpell.getRequired()) {
+                if (req instanceof EquipmentRequirement) {
+                    EquipmentRequirement equipReq = (EquipmentRequirement) req;
+                    equippedCorrect = player.getEquipment().contains(equipReq.getId());
+                }
+            }
+        }
+        useAutocast = useAutocast && equippedCorrect;
+        List<Item> required = Magic.INSTANCE.checkRequirements(player, spell.getLevel(), spell.getRequired(), useAutocast);
         if (required == null) {
             if (spell == autocastSpell) {
                 // If the failed spell is our autocasted spell, clear it.
@@ -264,7 +277,7 @@ public final class PlayerCombatContext extends CombatContext {
             if (player.getCombat().inCombat() && !Objects.equals(target, other)) {
                 player.sendMessage("You are already in combat.");
                 return false;
-            } else if (other.getCombat().inCombat() && !Objects.equals(target, player)) {
+            } else if (other.getCombat().inCombat() && !Objects.equals(target, player) && !Objects.equals(other, target)) {
                 player.sendMessage("That player is already in combat.");
                 return false;
             }
