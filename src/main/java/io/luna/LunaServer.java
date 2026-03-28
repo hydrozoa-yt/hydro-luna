@@ -34,10 +34,15 @@ import io.netty.util.ResourceLeakDetector;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static com.google.common.util.concurrent.Uninterruptibles.awaitTerminationUninterruptibly;
 import static org.apache.logging.log4j.util.Unbox.box;
@@ -115,11 +120,34 @@ public final class LunaServer {
             // We're ready to accept logins.
             initNetwork();
 
+            importNpcs();
+
             long elapsedTime = launchTimer.elapsed(TimeUnit.SECONDS);
             logger.info("Luna is now online on port {} (took {}s).",
                     box(Luna.settings().game().port()), box(elapsedTime));
         } finally {
             classpath = null;
+        }
+    }
+
+    private void importNpcs() {
+        Path startPath = Paths.get("data/dumps/maps/");
+
+        try (Stream<Path> stream = Files.walk(startPath)) {
+            stream.filter(f -> Files.isRegularFile(f) && f.getFileName().toString().endsWith(".jm2"))
+                    .forEach(f -> {
+                        String filename = f.getFileName().toString().replace(".jm2", "");
+                        filename = filename.substring(1);
+
+                        String[] tokens = filename.split("_");
+                        int chunkX = Integer.parseInt(tokens[0]);
+                        int chunkY = Integer.parseInt(tokens[1]);
+
+                        System.out.println(chunkX+" "+chunkY);
+
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
