@@ -2,7 +2,12 @@ package io.luna;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,9 +22,9 @@ public class NpcImporter {
 
     private class NpcData {
         protected int id = -1;
-        protected int respawnRate = 50;
+        protected int respawnRate = -1;
         protected String moverestrict = "";
-        protected int wanderrange = 5;
+        protected int wanderrange = -1;
     }
 
     private class NpcSpawn {
@@ -62,7 +67,7 @@ public class NpcImporter {
                                     int id = idNameMap.inverse().get(name);
                                     dat.id = id;
                                     npcData.put(dat.id, dat);
-                                    System.out.println("Added "+name);
+                                    //System.out.println("Added "+name);
                                     continue;
                                 }
                                 if (s.trim().startsWith("moverestrict")) {
@@ -74,7 +79,10 @@ public class NpcImporter {
                                     continue;
                                 }
                                 if (s.trim().startsWith("respawnrate")) {
+                                    System.out.println("found respawn rate mob="+dat.id);
                                     dat.respawnRate = Integer.parseInt(s.trim().split("=")[1]);
+                                    System.out.println(dat.respawnRate);
+                                    System.out.println(npcData.get(dat.id).respawnRate);
                                     continue;
                                 }
                             }
@@ -108,6 +116,9 @@ public class NpcImporter {
                                     foundNpcTag = true;
                                     continue;
                                 }
+                                if (line.startsWith("==== OBJ")) {
+                                    break;
+                                }
                                 if (line.isEmpty()) {
                                     continue;
                                 }
@@ -121,20 +132,71 @@ public class NpcImporter {
                                     int coordX = chunkX * 64 + localX;
                                     int coordY = chunkY * 64 + localY;
 
-                                    // todo create NpcSpawn and add to list npcSpawn
+                                    NpcSpawn spawn = new NpcSpawn();
+                                    spawn.id=id;
+                                    spawn.x=coordX;
+                                    spawn.y=coordY;
+                                    spawn.height=height;
+                                    npcSpawn.add(spawn);
                                 }
                             }
                         } catch (IOException e) {
                             e.printStackTrace();
                             return;
                         }
-
                     });
         } catch (IOException e) {
             e.printStackTrace();
+            return;
         }
 
         // todo loop through npcSpawn and write npc_spawns.json
+        JsonArray rootArray = new JsonArray();
+        for (NpcSpawn spawn : npcSpawn) {
+            JsonObject npcSpawnJson = new JsonObject();
+            npcSpawnJson.addProperty("id", spawn.id);
+
+            JsonObject position = new JsonObject();
+            position.addProperty("x", spawn.x);
+            position.addProperty("y", spawn.y);
+            position.addProperty("z", spawn.height);
+            npcSpawnJson.add("position", position);
+
+            if (npcData.get(spawn.id) != null) {
+                NpcData data = npcData.get(spawn.id);
+                if (data.respawnRate > 0) {
+                    npcSpawnJson.addProperty("respawn_ticks", data.respawnRate);
+                }
+                if (data.wanderrange > 0) {
+                    JsonObject wander = new JsonObject();
+                    wander.addProperty("radius", data.wanderrange);
+                    wander.addProperty("frequency", "NORMAL");
+                    npcSpawnJson.add("wander", wander);
+                } else if (data.wanderrange == -1) {
+                    JsonObject wander = new JsonObject();
+                    wander.addProperty("radius", 5);
+                    wander.addProperty("frequency", "NORMAL");
+                    npcSpawnJson.add("wander", wander);
+                }
+            } else {
+                JsonObject wander = new JsonObject();
+                wander.addProperty("radius", 5);
+                wander.addProperty("frequency", "NORMAL");
+                npcSpawnJson.add("wander", wander);
+            }
+
+            rootArray.add(npcSpawnJson);
+
+            //System.out.println(spawn.id+" "+spawn.x+" "+spawn.y+" ");
+        }
+
+        // Write to file
+        try (FileWriter writer = new FileWriter("data/dumps/npc_spawns.json.generated")) {
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            gson.toJson(rootArray, writer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
