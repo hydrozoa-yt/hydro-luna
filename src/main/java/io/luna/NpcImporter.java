@@ -181,6 +181,10 @@ public class NpcImporter {
                 forceNoMove = true;
                 System.out.println("Excluded banker");
             }
+            if (name.equalsIgnoreCase("Border Guard")) {
+                forceNoMove = true;
+                System.out.println("Excluded border guard");
+            }
 
             JsonObject npcSpawnJson = new JsonObject();
             npcSpawnJson.addProperty("id", spawn.id);
