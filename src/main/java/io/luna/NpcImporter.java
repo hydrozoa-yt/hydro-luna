@@ -6,6 +6,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import io.luna.game.cache.Cache;
+import io.luna.game.cache.codec.*;
+import io.luna.game.model.def.NpcDefinition;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -39,6 +42,22 @@ public class NpcImporter {
     private List<NpcSpawn> npcSpawn = new ArrayList<>();
 
     private void importNpcs() {
+        LunaContext ctx = new LunaContext();
+        Cache cache = new Cache();
+        try {
+            cache.open();
+            cache.runDecoders(ctx,
+                    new ObjectDefinitionDecoder(),
+                    new WidgetDefinitionDecoder(),
+                    new ItemDefinitionDecoder(),
+                    new NpcDefinitionDecoder(),
+                    new VarBitDefinitionDecoder(),
+                    new VarpDefinitionDecoder(),
+                    new MapDecoder());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
         Path npcPack = Paths.get("data/dumps/npc.pack");
         try {
             List<String> lines = Files.readAllLines(npcPack);
@@ -150,9 +169,19 @@ public class NpcImporter {
             return;
         }
 
-        // todo loop through npcSpawn and write npc_spawns.json
         JsonArray rootArray = new JsonArray();
         for (NpcSpawn spawn : npcSpawn) {
+            boolean forceNoMove = false;
+            String name = NpcDefinition.ALL.get(spawn.id).isPresent() ? NpcDefinition.ALL.get(spawn.id).get().getName() : "null";
+            if (name.equalsIgnoreCase("Fishing spot")) {
+                forceNoMove = true;
+                System.out.println("Excluded fishing spot");
+            }
+            if (name.equalsIgnoreCase("Banker")) {
+                forceNoMove = true;
+                System.out.println("Excluded banker");
+            }
+
             JsonObject npcSpawnJson = new JsonObject();
             npcSpawnJson.addProperty("id", spawn.id);
 
@@ -167,18 +196,18 @@ public class NpcImporter {
                 if (data.respawnRate > 0) {
                     npcSpawnJson.addProperty("respawn_ticks", data.respawnRate);
                 }
-                if (data.wanderrange > 0) {
+                if (data.wanderrange > 0 && !forceNoMove) {
                     JsonObject wander = new JsonObject();
                     wander.addProperty("radius", data.wanderrange);
                     wander.addProperty("frequency", "NORMAL");
                     npcSpawnJson.add("wander", wander);
-                } else if (data.wanderrange == -1) {
+                } else if (data.wanderrange == -1 && !forceNoMove) {
                     JsonObject wander = new JsonObject();
                     wander.addProperty("radius", 5);
                     wander.addProperty("frequency", "NORMAL");
                     npcSpawnJson.add("wander", wander);
                 }
-            } else {
+            } else if (!forceNoMove) {
                 JsonObject wander = new JsonObject();
                 wander.addProperty("radius", 5);
                 wander.addProperty("frequency", "NORMAL");
@@ -197,6 +226,8 @@ public class NpcImporter {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        System.exit(0);
     }
 
     public static void main(String[] args) {
