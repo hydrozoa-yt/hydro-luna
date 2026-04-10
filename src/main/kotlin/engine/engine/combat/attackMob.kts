@@ -25,7 +25,7 @@ import io.luna.game.model.mob.interact.InteractionPolicy
  */
 fun getInteraction(plr: Player, target: Entity): InteractionPolicy {
     if (target is Mob) {
-        val nextAttack = plr.combat.getNextAttack(target, plr.combat.isAttackReady)
+        val nextAttack = plr.combat.getNextAttack(target)
         plr.combat.firstAttack = nextAttack
         return nextAttack.interactionPolicy
     } else {
@@ -35,36 +35,34 @@ fun getInteraction(plr: Player, target: Entity): InteractionPolicy {
 
 // "Attack" context menu option on players.
 on(PlayerFirstClickEvent::class, EventPriority.HIGH, interaction = { plr, target -> getInteraction(plr, target) }) {
-    if (plr.contextMenu.contains(OPTION_ATTACK) && targetPlr.hitpoints.level > 0) {
+    if (plr.combat.isAttackable && targetPlr.combat.isAttackable) {
         plr.combat.attack(targetPlr)
     }
 }
 
 // Use magic spell on player.
 on(MagicOnPlayerEvent::class, EventPriority.HIGH, InteractionPolicy.STANDARD_LINE_OF_SIGHT) {
-    if (plr.contextMenu.contains(OPTION_ATTACK) && targetPlr.hitpoints.level > 0) {
+    if (plr.combat.isAttackable && targetPlr.combat.isAttackable) {
         plr.combat.magic.selectedSpell =
             CombatSpellDefinition.ALL[spellId].orElseThrow { IllegalArgumentException("Invalid spell ID $spellId") }
-        plr.combat.firstAttack = plr.combat.getNextAttack(targetPlr, plr.combat.isAttackReady)
+        plr.combat.firstAttack = plr.combat.getNextAttack(targetPlr)
         plr.combat.attack(targetPlr)
     }
 }
 
 // "Attack" context menu option on npcs.
 on(AttackNpcEvent::class, EventPriority.HIGH, interaction = { plr, target -> getInteraction(plr, target) }) {
-    val def = targetNpc.definition
-    if (def.combatLevel > 0 && def.actions.contains("Attack")) {
+    if (plr.combat.isAttackable && targetNpc.combat.isAttackable) {
         plr.combat.attack(targetNpc)
     }
 }
 
 // Use magic spell on NPC.
 on(MagicOnNpcEvent::class, EventPriority.HIGH, InteractionPolicy.STANDARD_LINE_OF_SIGHT) {
-    val def = targetNpc.definition
-    if (def.combatLevel > 0 && def.actions.contains("Attack")) {
+    if (plr.combat.isAttackable && targetNpc.combat.isAttackable) {
         plr.combat.magic.selectedSpell =
             CombatSpellDefinition.ALL[spellId].orElseThrow { IllegalArgumentException("Invalid spell ID $spellId") }
-        plr.combat.firstAttack = plr.combat.getNextAttack(targetNpc, plr.combat.isAttackReady)
+        plr.combat.firstAttack = plr.combat.getNextAttack(targetNpc)
         plr.combat.attack(targetNpc)
     }
 }
