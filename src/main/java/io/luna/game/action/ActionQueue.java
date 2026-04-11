@@ -68,6 +68,12 @@ public final class ActionQueue {
     private final Set<String> types = new HashSet<>();
 
     /**
+     * If actions are currently being run. Used to normalize processing delays when actions are scheduled within
+     * actions.
+     */
+    private boolean running;
+
+    /**
      * Creates a new {@link ActionQueue} for {@code mob}.
      *
      * @param mob The mob that owns this action queue.
@@ -209,6 +215,7 @@ public final class ActionQueue {
             if (action.getState() != ActionState.PROCESSING) {
                 continue;
             }
+            action.processed = true;
             executing.add(action);
         }
 
@@ -237,6 +244,19 @@ public final class ActionQueue {
             // Action completed normally this cycle.
             if (action.isComplete()) {
                 action.complete();
+            }
+        }
+    }
+
+    /**
+     * Normalizes all delays when actions are scheduled within actions.
+     */
+    public void normalize() {
+        for (Action<?> action : processing.values()) {
+            if (action.processed) {
+                action.processed = false;
+            } else {
+                action.counter = 0;
             }
         }
     }

@@ -397,7 +397,9 @@ public abstract class CombatContext<T extends Mob> {
      * This decrements the remaining delay so the mob moves closer to being able to attack again.
      */
     public void processAttackDelay() {
-        attackDelay--;
+        if (attackDelay > 0) {
+            attackDelay--;
+        }
     }
 
     /**
@@ -407,6 +409,20 @@ public abstract class CombatContext<T extends Mob> {
      */
     public void setAttackDelay(int attackDelay) {
         this.attackDelay = attackDelay;
+    }
+
+    /**
+     * Extends the current attack delay after food is eaten.
+     * <p>
+     * This only applies an additional delay if an attack cooldown is already active. If the current attack delay is
+     * zero or less, no delay is added.
+     *
+     * @param delay The additional delay to add.
+     */
+    public void addFoodDelay(int delay) {
+        if (attackDelay > 0) {
+            attackDelay += delay;
+        }
     }
 
     /**
