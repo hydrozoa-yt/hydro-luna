@@ -17,7 +17,6 @@ import io.luna.game.model.mob.combat.damage.CombatDamageType
 import io.luna.game.model.mob.interact.InteractionPolicy
 import io.luna.game.model.mob.interact.InteractionType
 
-// Only register hooks if slayer equipment is required.
 if (Luna.settings().skills().slayerEquipmentNeeded()) {
 
     /**
@@ -74,8 +73,6 @@ if (Luna.settings().skills().slayerEquipmentNeeded()) {
                 damage = null
                 npc.walking.isLocked = true
                 npc.combat.isDisabled = true
-                npc.interact(null)
-                npc.lock(2)
                 npc.transform(1611)
                 npc.health = 1
             }
