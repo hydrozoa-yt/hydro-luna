@@ -88,9 +88,14 @@ public final class WeaponTypeDefinition implements Definition {
     private final int id;
 
     /**
-     * The interface line used to display the selected combat style for this weapon type.
+     * The interface line used to display the weapon's name.
      */
     private final int line;
+
+    /**
+     * The default model and animation metadata used by this weapon type.
+     */
+    private final WeaponModelDefinition model;
 
     /**
      * The selectable combat styles for this weapon type.
@@ -108,13 +113,16 @@ public final class WeaponTypeDefinition implements Definition {
      * @param type The weapon type this definition belongs to.
      * @param id The interface id for this weapon type.
      * @param line The interface line used for combat style display.
+     * @param model The default model metadata for this weapon type.
      * @param styles The selectable combat styles for this weapon type.
      * @param special The special attack bar metadata, or {@code null} if none exists.
      */
-    public WeaponTypeDefinition(Weapon type, int id, int line, List<CombatStyleDefinition> styles, WeaponSpecialBarDefinition special) {
+    public WeaponTypeDefinition(Weapon type, int id, int line, WeaponModelDefinition model,
+                                List<CombatStyleDefinition> styles, WeaponSpecialBarDefinition special) {
         this.type = type;
         this.id = id;
         this.line = line;
+        this.model = model;
         this.styles = styles;
         this.special = special;
     }
@@ -132,10 +140,17 @@ public final class WeaponTypeDefinition implements Definition {
     }
 
     /**
-     * @return The interface line.
+     * @return The weapon name text line ID.
      */
     public int getLine() {
         return line;
+    }
+
+    /**
+     * @return The default model definition.
+     */
+    public WeaponModelDefinition getModel() {
+        return model;
     }
 
     /**

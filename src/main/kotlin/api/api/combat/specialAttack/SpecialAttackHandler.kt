@@ -49,6 +49,10 @@ object SpecialAttackHandler {
             plr.actions.submitIfAbsent(SpecialActivationAction(plr, receiver))
         }
         // TODO Instant special attack queuing? Test behaviour in game.
+        // TODO When special is instant and already in combat.. disable toggle off. or basically make it so that if
+        //  combat action is active and player is reached, cannot turn off special, or queuing behaviour where it locks for 1 tick after
+        // TODO see what works, do some debugging
+        // TODO This code should always come before combat processing, so disabling the bar shouldn't be necessary.
         return true
     }
 
@@ -65,7 +69,7 @@ object SpecialAttackHandler {
      * @param damageType The combat damage type used by this special attack.
      * @param instant `true` if this special should behave as an instant special attack.
      * @param attackBonus A flat bonus applied to the special attack's accuracy.
-     * @param damageBonus A percentage-based bonus applied to damage.
+     * @param strengthBonus A percentage-based bonus applied to damage.
      * @param maxHit An optional base max-hit override.
      * @param action The DSL block used to configure the special attack.
      */
@@ -74,10 +78,18 @@ object SpecialAttackHandler {
                damageType: CombatDamageType = CombatDamageType.MELEE,
                instant: Boolean = false,
                attackBonus: Double = 0.0,
+               strengthBonus: Double = 0.0,
                damageBonus: Double = 0.0,
                maxHit: Int? = null,
                action: SpecialAttackDataReceiver.() -> Unit) {
-        val receiver = SpecialAttackDataReceiver(drain, damageType, instant, attackBonus, damageBonus, maxHit, false)
+        val receiver = SpecialAttackDataReceiver(drain,
+                                                 damageType,
+                                                 instant,
+                                                 attackBonus,
+                                                 strengthBonus,
+                                                 damageBonus,
+                                                 maxHit,
+                                                 false)
         action(receiver)
         specialAttacks[type] = receiver
     }
@@ -98,7 +110,7 @@ object SpecialAttackHandler {
         // Hide special attack modulators from activation specials.
         val receiver = SpecialAttackDataReceiver(drain = drain,
                                                  activationOnly = true)
-        receiver.launchedTransformer = { action(attacker) }
+        receiver.launchedTransformer = { action(attacker); damage }
         specialAttacks[type] = receiver
     }
 
@@ -112,5 +124,17 @@ object SpecialAttackHandler {
     fun PlayerCombatContext.specialAttackData(): SpecialAttackDataReceiver {
         val type = weapon.specialAttackType
         return requireNotNull(specialAttacks[type]) { " No receiver for special attack type $type." }
+    }
+
+    /**
+     * Returns every weapon id registered across all special attack definitions.
+     *
+     * This flattens the weapon id arrays from each special attack entry into a single list in iteration order.
+     * Duplicate ids are **not** preserved if the same weapon id appears in more than one entry.
+     *
+     * @return A list containing all registered weapon ids.
+     */
+    fun getAllWeaponIds(): Set<Int> {
+        return specialAttacks.keys.flatMap { it.ids }.toSet()
     }
 }

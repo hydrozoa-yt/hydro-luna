@@ -1,6 +1,7 @@
 package io.luna.game.model.mob.combat.damage;
 
 import io.luna.game.model.mob.Mob;
+import io.luna.game.model.mob.combat.attack.CombatAttack;
 
 import java.util.OptionalInt;
 
@@ -45,6 +46,9 @@ public final class CombatDamage {
      */
     private final OptionalInt amount;
 
+    // todo docs, the source, can be null
+   // private final CombatAttack<?> source;
+
     /**
      * Creates a new resolved combat hit.
      *
@@ -58,6 +62,7 @@ public final class CombatDamage {
         this.victim = victim;
         this.type = type;
         this.amount = amount;
+       // this.source = source;
     }
 
     /**
@@ -67,7 +72,7 @@ public final class CombatDamage {
      * non-damaging combat effect and exits without applying damage or pushing to the damage stack. Otherwise, the
      * numeric damage is applied and this hit is pushed onto the victim's damage stack.
      */
-    public void apply() {
+    public void apply(CombatAttack<?> source) { // todo redo docs
         if (amount.isPresent()) {
             int rawAmount = amount.getAsInt();
             if (rawAmount == -1) {
@@ -76,7 +81,11 @@ public final class CombatDamage {
             }
             victim.damage(rawAmount);
         }
+        // todo redesign this, combatattack damage, combatdamageaction, and this should all be in sync
         victim.getCombat().getDamageStack().push(this);
+        source.onDamageApplied(this);
+        victim.getCombat().setLastAttackReceived(source);
+        victim.getCombat().setLastDamageReceived(this);
     }
 
     /**

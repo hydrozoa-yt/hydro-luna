@@ -69,12 +69,12 @@ public final class CombatDamageAction extends Action<Mob> {
     @Override
     public boolean run() {
         if (victim.isAlive()) {
-            victim.getCombat().onNextDefence(attacker, damage, this);
+            // Last defensive modifications/hooks to the damage before applying it.
+            victim.getCombat().onNextDefence(attacker, this);
 
             // Apply the hit.
             if (damage != null) {
-                damage.apply();
-                source.onDamageApplied(damage);
+                damage.apply(source);
             }
 
             // Determine whether the victim should retaliate.

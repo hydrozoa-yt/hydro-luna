@@ -1,32 +1,41 @@
 package game.player.command
 
+import api.combat.specialAttack.SpecialAttackHandler
 import api.drops.DropTableHandler
 import api.predef.*
 import api.predef.ext.*
+import game.bot.scripts.PkBotScript
 import io.luna.Luna
 import io.luna.game.action.Action
 import io.luna.game.action.ActionType
 import io.luna.game.model.Position
 import io.luna.game.model.area.Area
+import io.luna.game.model.def.EquipmentDefinition
 import io.luna.game.model.def.NpcDefinition
+import io.luna.game.model.def.WeaponDefinition
 import io.luna.game.model.item.Bank.DynamicBankInterface
+import io.luna.game.model.item.Equipment
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.Player
+import io.luna.game.model.mob.Spellbook
 import io.luna.game.model.mob.block.Animation
 import io.luna.game.model.mob.block.Animation.AnimationPriority
 import io.luna.game.model.mob.block.Graphic
 import io.luna.game.model.mob.bot.Bot
+import io.luna.game.model.mob.combat.CombatSpell
+import io.luna.game.model.mob.combat.Weapon
+import io.luna.game.model.mob.movement.wandering.SmartWanderingAction
+import io.luna.game.model.mob.movement.wandering.WanderingFrequency
 import io.luna.game.model.mob.overlay.StandardInterface
 import io.luna.game.model.mob.overlay.TextInput
 import io.luna.game.model.mob.varp.Varp
-import io.luna.game.model.mob.wandering.SmartWanderingAction
-import io.luna.game.model.mob.wandering.WanderingFrequency
 import io.luna.game.model.`object`.ObjectType
 import io.luna.net.msg.out.SoundMessageWriter
 import io.luna.util.CacheDumpUtils
 import io.luna.util.RandomUtils
 import java.lang.Boolean.parseBoolean
+import java.time.Duration
 
 
 /**
@@ -56,7 +65,10 @@ cmd("bots", RIGHTS_DEV) {
     val count = if (args.isNotEmpty()) asInt(0) else 1
     val randomEquipment = if (args.size == 2) parseBoolean(args[1]) else false
     val array = WanderingFrequency.values()
-    plr.submitAction(SmartWanderingAction(plr, Area.of(plr.position, 250), WanderingFrequency.NORMAL))
+    plr.submitAction(SmartWanderingAction(plr,
+                                          Area.of(plr.position,
+                                                  250),
+                                          WanderingFrequency.NORMAL))
     repeat(count) {
         val bot = Bot.Builder(ctx).setUsername(username + it).build()
         bot.login().thenRun {
@@ -72,8 +84,13 @@ cmd("bots", RIGHTS_DEV) {
                 }
             })
             bot.submitAction(SmartWanderingAction(bot,
-                                                  Area.of(Luna.settings().game().startingPosition(), 250),
-                                                  RandomUtils.random(array)))
+                                                  Area.of(
+                                                      Luna.settings()
+                                                          .game()
+                                                          .startingPosition(),
+                                                      250),
+                                                  RandomUtils.random(
+                                                      array)))
         }
     }
 }
@@ -104,6 +121,17 @@ cmd("npc", RIGHTS_DEV) {
     val npc = Npc(ctx, asInt(0), plr.position)
     world.addNpc(npc)
 }
+/**
+ * A command that spawns a non-player character.
+ */
+cmd("npcblock", RIGHTS_DEV) {
+    val area = Area.of(plr.position, 2)
+    for(pos in area.computePositions()) {
+        val npc = Npc(ctx, asInt(0), pos)
+        world.addNpc(npc)
+    }
+}
+
 
 /**
  * A command that spawns an object.
@@ -131,13 +159,46 @@ cmd("obj", RIGHTS_DEV) {
                     plr = plr)
 }
 
+// TODO add commands below to custom bot testing mode
+// TODO modes:
+//  IDLE, LOCAL_WANDERING, GLOBAL_WANDERING, PKING (done below), SKILLING (do later)
+cmd("ok") {
+    val bot = Bot.Builder(ctx).setUsername("elite111111")
+        .setSpawnPosition(plr.position).build()
+    bot.maxSkills()
+    bot.login()
+
+}
+cmd("findnpc") {
+    val name = getInputFrom(0)
+    val choices = ArrayList<Position>()
+    for (next in world.npcs) {
+        if (next.def().name.equals(name, true)) {
+            choices += next.position
+        }
+    }
+    plr.move(choices.random())
+}
+cmd("findfight") {
+    val choices = ArrayList<Position>()
+    for (next in world.players) {
+        if (next.combat.inCombat()) {
+            choices += next.position
+        }
+    }
+    plr.move(choices.random())
+}
+cmd("pkbots") {
+
+}
+
 /**
  * Simulates drops for whichever table is implemented.
  */
 cmd("roll", RIGHTS_DEV) {
     val npc = asInt(0)
     var times = asInt(1)
-    if(times > 50_000)
+    if (times > 50_000)
         times = 50_000
     val npcName = NpcDefinition.ALL[npc].orElseThrow().name
     plr.overlays.open(object : DynamicBankInterface("'$npcName x $times'") {
@@ -154,6 +215,7 @@ cmd("roll", RIGHTS_DEV) {
         }
     })
 }
+
 
 /**
  * A command that sends the current position.

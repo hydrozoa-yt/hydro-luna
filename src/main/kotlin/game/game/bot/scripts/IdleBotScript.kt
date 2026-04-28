@@ -6,14 +6,13 @@ import api.bot.Suspendable.maybe
 import api.bot.Suspendable.naturalDecisionDelay
 import api.bot.Suspendable.naturalDelay
 import api.bot.Suspendable.waitFor
-import engine.controllers.Controllers.inWilderness
 import api.predef.*
 import api.predef.ext.*
 import com.google.common.base.Stopwatch
 import com.google.common.collect.ImmutableList
-import engine.interaction.follow.MobFollowAction
-import game.bot.scripts.IdleBotScript.InputData
+import engine.controllers.Controllers.inWilderness
 import engine.widget.settings.Emote
+import game.bot.scripts.IdleBotScript.InputData
 import io.luna.Luna
 import io.luna.game.model.Position
 import io.luna.game.model.mob.block.Animation
@@ -75,26 +74,34 @@ class IdleBotScript(bot: Bot, var data: InputData) : BotScript<InputData>(bot) {
      */
     private val timer = Stopwatch.createUnstarted()
 
-    override suspend fun run() {
-        // Run script until our idle timer completes.
+    override suspend fun init() {
         timer.start()
-        while (timer.elapsed().toMinutes() < data.durationMinutes) {
-            try {
-                handler.widgets.clickRunning(false)
-                bot.naturalDelay()
-                nextState()
-                when (data.state) {
-                    State.STANDING -> randomActions()
-                    State.FOLLOW -> doFollow()
-                    State.TELEPORT -> doTeleport()
-                    else -> {} // Do nothing.
+    }
 
-                }
-            } finally {
-                data.state = null
-            }
-            bot.naturalDecisionDelay()
+    override suspend fun run(): Boolean {
+        // Run script until our idle timer completes.
+        if (timer.elapsed().toMinutes() >= data.durationMinutes) {
+            return true
         }
+        try {
+            handler.widgets.clickRunning(false)
+            bot.naturalDelay()
+            nextState()
+            when (data.state) {
+                State.STANDING -> randomActions()
+                State.FOLLOW -> doFollow()
+                State.TELEPORT -> doTeleport()
+                else -> {} // Do nothing.
+
+            }
+        } finally {
+            data.state = null
+        }
+        bot.naturalDecisionDelay()
+        return false
+    }
+
+    override suspend fun finish() {
         timer.reset()
     }
 
@@ -135,7 +142,7 @@ class IdleBotScript(bot: Bot, var data: InputData) : BotScript<InputData>(bot) {
 
             // Follow them for a little or until you enter the wilderness.
             val followTime = rand(5, 120)
-            waitFor(followTime.minutes) { bot.inWilderness() || !bot.actions.contains(MobFollowAction::class) }
+            waitFor(followTime.minutes) { bot.inWilderness() || !bot.navigator.isActive }
 
             bot.log("No longer following anyone.")
         }
