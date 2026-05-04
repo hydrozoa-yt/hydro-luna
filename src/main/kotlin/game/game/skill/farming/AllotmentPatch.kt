@@ -4,13 +4,15 @@ import io.luna.game.model.mob.varp.*
 
 /**
  * Represents any allotment patch.
+ * Uses varp id 504 and 505
+ *
  * @author hydrozoa
  */
 class AllotmentPatch(val southEastern: Boolean) : FarmingPatch() {
 
     private var plantType: SeedType? = null
 
-    override fun getVarp(): Varp {
+    override fun getVarpValue(): Int {
         var varpValue: Int = 3
         if (needsRaking()) {
             varpValue = 3 - weeds
@@ -22,6 +24,6 @@ class AllotmentPatch(val southEastern: Boolean) : FarmingPatch() {
             varpValue = varpValue shl 8
         }
 
-        return Varp(504, varpValue)
+        return varpValue
     }
 }

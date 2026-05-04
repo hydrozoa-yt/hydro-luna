@@ -9,18 +9,36 @@ import io.luna.game.model.mob.varp.*
  */
 class HerbPatch(val location: HerbPatchLocation) : FarmingPatch() {
 
-    private var plantType: HerbSeeds? = null
-    private var growthStage = 0
+    var plantType: HerbSeeds? = null
+    var growthStage = 0 // from 0 to 5
 
-    override fun getVarp(): Varp {
+    override fun getVarpValue(): Int {
         var varpValue: Int = 3
         if (needsRaking()) {
             varpValue = 3 - weeds
         } else if (plantType == null) {
             varpValue = 3
+        } else if (plantType != null)  {
+            varpValue = 3 + growthStage
         }
         varpValue = varpValue shl location.shifts
+        return varpValue
+    }
 
-        return Varp(515, varpValue)
+    /**
+     * @return true if successfully planted
+     */
+    fun plant(seed: HerbSeeds): Boolean {
+        if (weeds > 0) {
+            return false
+        }
+        plantType = seed
+        return true
+    }
+
+    fun reset() {
+        plantType = null
+        growthStage = 0
+        weeds = 3
     }
 }

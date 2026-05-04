@@ -2,6 +2,8 @@ package game.player.command
 
 import api.predef.*
 import com.google.common.primitives.Ints
+import game.skill.farming.*
+import game.skill.farming.Farming.herbPatches
 import io.luna.game.model.Position
 import io.luna.game.model.Region
 import io.luna.game.model.chunk.Chunk
@@ -191,6 +193,13 @@ cmd("item", RIGHTS_ADMIN) {
     val id = asInt(0)
     val amount = if (args.size == 2) asInt(1) else 1
     plr.inventory.add(Item(id, amount))
+}
+
+cmd("resetpatches", RIGHTS_ADMIN) {
+    plr.herbPatches.values.forEach({ herbPatch ->
+        herbPatch.reset()
+    })
+    Farming.sendHerbState(plr)
 }
 
 /**

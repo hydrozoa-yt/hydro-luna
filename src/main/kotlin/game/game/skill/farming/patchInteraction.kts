@@ -1,8 +1,9 @@
 package game.skill.farming
 
 import api.predef.*
-import game.skill.farming.Farming.herbPatch
+import game.skill.farming.Farming.herbPatches
 import io.luna.game.event.impl.*
+import io.luna.game.model.item.*
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.varp.*
 
@@ -33,35 +34,45 @@ import io.luna.game.model.mob.varp.*
  * each herb patch has its own unique id
  */
 
+// todo maybe hook mapupdate event to send correct patches
 
-// todo hook mapupdate event to send correct patches
+val rake = 5341
 
-// raking herb patch falador
-/*useItem(5341).onObject(8150) {
-    plr.submitAction(RakePatchAction(plr, gameObject))
-}
-
-// raking allotment patch falador
-useItem(5341).onObject(8551) {
-    plr.sendMessage("Raking the allotment patch")
-}*/
-
-Farming.HERB_PATCHES.forEach { id ->
-    useItem(5341).onObject(id) {
+// Hook for raking herb patches
+HerbPatchLocation.values().forEach { location ->
+    useItem(rake).onObject(location.objectId) {
         plr.submitAction(RakePatchAction(plr, gameObject))
     }
 }
 
-Farming.ALLOTMENT_PATCHES.forEach { id ->
-    useItem(5341).onObject(id) {
-        plr.submitAction(RakePatchAction(plr, gameObject))
+// Hook for planting seeds in herb patches
+HerbSeeds.values().forEach { seed ->
+    HerbPatchLocation.values().forEach { location ->
+        useItem(seed.seedId).onObject(location.objectId) {
+            var patch: HerbPatch = plr.herbPatches[location] ?: return@onObject
+
+            if (patch.needsRaking()) {
+                plr.sendMessage("The patch has weeds in it.")
+                return@onObject
+            }
+
+            if (!plr.inventory.contains(Item.byName("Seed dibber"))) {
+                plr.sendMessage("You need a seed dipper to do this.")
+                return@onObject
+            }
+
+            plr.sendMessage("You plant the seed.")
+            plr.inventory.remove(seed.seedId)
+            if (patch.plant(seed)) {
+                Farming.sendHerbState(plr)
+            }
+        }
     }
 }
 
 // Send farming state when logged in
-// todo send when region is loaded
 on(LoginEvent::class) {
-    plr.sendVarp(plr.herbPatch.getVarp())
+    Farming.sendHerbState(plr)
 }
 
 useItem(6032).onObject(7836) {

@@ -6,7 +6,7 @@ package game.skill.farming
  */
 enum class HerbPatchLocation(val objectId: Int, val shifts: Int) {
     FALADOR(8150, 0),
-    CATHERBY(8151, 12),
+    CATHERBY(8151, 8),
     ARDOUGNE(8152, 16),
     PORT_PHATASMYS(8153, 24),
     ;

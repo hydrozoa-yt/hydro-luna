@@ -12,6 +12,9 @@ abstract class FarmingPatch {
     private var isDiseased: Boolean = false
     protected var weeds: Int = 3
 
+    /**
+     * If this patchs needs raking.
+     */
     fun needsRaking(): Boolean {
         return weeds > 0
     }
@@ -25,5 +28,8 @@ abstract class FarmingPatch {
         return weeds <= 0
     }
 
-    abstract fun getVarp(): Varp
+    /**
+     * The value this patch contributes to the patch state, stored in a varp.
+     */
+    abstract fun getVarpValue(): Int
 }

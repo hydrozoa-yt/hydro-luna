@@ -5,30 +5,47 @@ import api.predef.*
 import api.predef.ext.*
 import game.player.*
 import game.skill.farming.Farming.allotmentPatch
-import game.skill.farming.Farming.herbPatch
+import game.skill.farming.Farming.herbPatches
 import io.luna.game.action.*
 import io.luna.game.model.item.*
 import io.luna.game.model.mob.Player
 import io.luna.game.model.`object`.GameObject
 
 /**
- * todo
+ * Action for raking a patch.
+ * todo add other types of patches
+ *
  * @author hydrozoa
  */
 class RakePatchAction(plr: Player, private val patchObject: GameObject) : Action<Player>(plr, ActionType.SOFT, true, 4) {
 
     override fun onSubmit() {
-        mob.sendMessage("Raking the patch...")
+        var patch: FarmingPatch? = null
+        if (HerbPatchLocation.values().map { it.objectId }.contains(patchObject.id)) {
+            patch = mob.herbPatches[HerbPatchLocation.lookup(patchObject.id)]
+        } /*else if (Farming.ALLOTMENT_PATCHES.contains(patchObject.id)) {
+            patch = mob.allotmentPatch
+        }*/ // todo implement allotment patches
+
+        if (patch == null) {
+            return
+        }
+
+        if (patch.needsRaking()) {
+            mob.sendMessage("Raking the patch...")
+        }
     }
 
     override fun run(): Boolean {
         var patch: FarmingPatch? = null
-        if (Farming.HERB_PATCHES.contains(patchObject.id)) {
-            patch = mob.herbPatch
-        } else if (Farming.ALLOTMENT_PATCHES.contains(patchObject.id)) {
+        if (HerbPatchLocation.values().map { it.objectId }.contains(patchObject.id)) {
+            patch = mob.herbPatches[HerbPatchLocation.lookup(patchObject.id)]
+        } /*else if (Farming.ALLOTMENT_PATCHES.contains(patchObject.id)) {
             patch = mob.allotmentPatch
-        } else {
-            System.err.println("Unknown patch raked")
+        }*/ // todo implement allotment patches
+
+        if (patch == null) {
+            mob.sendMessage("Unknown patch")
             return true
         }
 
@@ -42,7 +59,7 @@ class RakePatchAction(plr: Player, private val patchObject: GameObject) : Action
         // todo send rake gfx
 
         var completedRaking = patch.rake() ?: true
-        mob.sendVarp(patch.getVarp())
+        Farming.sendHerbState(mob)
         mob.inventory.add(Item.byName("Weeds"))
 
         return completedRaking

@@ -2,6 +2,7 @@ package game.skill.farming
 
 import api.attr.*
 import io.luna.game.model.mob.*
+import io.luna.game.model.mob.varp.*
 
 /**
  *
@@ -10,18 +11,28 @@ import io.luna.game.model.mob.*
 object Farming {
 
     /**
-     * An attribute representing an herb patch.
+     * An attribute representing all herb patches.
      */
     val Player.herbPatches by Attr.map<HerbPatchLocation, HerbPatch> {
-        HerbPatchLocation.values().associateWith { location -> HerbPatch(location) }
+        val map = HashMap<HerbPatchLocation, HerbPatch>()
+        HerbPatchLocation.values().forEach { location ->
+            map[location] = HerbPatch(location)
+        }
+        map
     }.persist("herb-patches")
 
     /**
      * An attribute representing an allotment patch.
+     * todo fix by making it a map like herb patches maybe?
      */
     val Player.allotmentPatch by Attr.obj<AllotmentPatch>{ AllotmentPatch(false) }.persist("allotment-patch")
 
-    val HERB_PATCHES = intArrayOf(8150)
-    val ALLOTMENT_PATCHES = intArrayOf(8551, 8550)
+    fun sendHerbState(plr: Player) {
+        var herbState: Int = 0
+        plr.herbPatches.values.forEach { patch ->
+            herbState += patch.getVarpValue()
+        }
+        plr.sendVarp(Varp(515, herbState))
+    }
 
 }
