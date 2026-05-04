@@ -2,9 +2,10 @@ package game.skill.farming
 
 import api.predef.*
 import game.skill.farming.Farming.herbPatches
+import game.skill.farming.patch.*
+import game.skill.farming.seed.*
 import io.luna.game.event.impl.*
 import io.luna.game.model.item.*
-import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.varp.*
 
 // config 504 = allotment plots Falador, specific bits for each plot

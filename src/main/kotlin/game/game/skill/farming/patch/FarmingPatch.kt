@@ -1,6 +1,4 @@
-package game.skill.farming;
-
-import io.luna.game.model.mob.varp.*
+package game.skill.farming.patch;
 
 /**
  * Represents any farming patch.

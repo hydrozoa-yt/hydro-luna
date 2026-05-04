@@ -1,11 +1,9 @@
 package game.skill.farming
 
-import api.attr.*
-import api.predef.*
 import api.predef.ext.*
 import game.player.*
-import game.skill.farming.Farming.allotmentPatch
 import game.skill.farming.Farming.herbPatches
+import game.skill.farming.patch.*
 import io.luna.game.action.*
 import io.luna.game.model.item.*
 import io.luna.game.model.mob.Player

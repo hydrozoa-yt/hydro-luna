@@ -1,4 +1,4 @@
-package game.skill.farming
+package game.skill.farming.seed
 
 import io.luna.game.model.item.*
 

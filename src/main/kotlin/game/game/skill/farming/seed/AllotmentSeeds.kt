@@ -1,22 +1,23 @@
-package game.skill.farming
+package game.skill.farming.seed
 
 import api.predef.*
+import game.skill.farming.*
 import io.luna.game.model.item.Item
 
 /**
  *
  * @author lare96
  */
-enum class SeedType(val seed: Int,
-                    val level: Int,
-                    val flowerProtection: Set<String> = emptySet(),
-                    val farmerProtection: Item? = null,
-                    val growthStages: Int,
-                    val crop: Item,
-                    val plantXp: Double,
-                    val harvestXp: Double,
-                    val patch: PatchType,
-                    val states: Pair<Int, Int> = Pair(-1, -1)) {
+enum class AllotmentSeeds(val seed: Int,
+                          val level: Int,
+                          val flowerProtection: Set<String> = emptySet(),
+                          val farmerProtection: Item? = null,
+                          val growthStages: Int,
+                          val crop: Item,
+                          val plantXp: Double,
+                          val harvestXp: Double,
+                          val patch: PatchType,
+                          val states: Pair<Int, Int> = Pair(-1, -1)) {
 
     // Allotment seeds.
     POTATO(seed = -1,
@@ -37,7 +38,8 @@ enum class SeedType(val seed: Int,
           crop = item("Onion"),
           plantXp = 9.5,
           harvestXp = 10.5,
-          patch = PatchType.ALLOTMENT),
+          patch = PatchType.ALLOTMENT
+    ),
     CABBAGE(seed = -1,
             level = 7,
             flowerProtection = setOf("Rosemary", "White lily"),
@@ -46,7 +48,8 @@ enum class SeedType(val seed: Int,
             crop = item("Cabbage"),
             plantXp = 10.0,
             harvestXp = 11.5,
-            patch = PatchType.ALLOTMENT),
+            patch = PatchType.ALLOTMENT
+    ),
     TOMATO(seed = -1,
            level = 12,
            flowerProtection = setOf("Marigold", "White lily"),
@@ -55,7 +58,8 @@ enum class SeedType(val seed: Int,
            crop = item("Tomato"),
            plantXp = 12.5,
            harvestXp = 14.0,
-           patch = PatchType.ALLOTMENT),
+           patch = PatchType.ALLOTMENT
+    ),
     SWEETCORN(seed = -1,
               level = 20,
               flowerProtection = setOf("Scarecrow", "White lily"),
@@ -64,7 +68,8 @@ enum class SeedType(val seed: Int,
               crop = item("Sweetcorn"),
               plantXp = 17.0,
               harvestXp = 19.0,
-              patch = PatchType.ALLOTMENT),
+              patch = PatchType.ALLOTMENT
+    ),
     STRAWBERRY(seed = -1,
                level = 31,
                flowerProtection = setOf("White lily"),
@@ -73,7 +78,8 @@ enum class SeedType(val seed: Int,
                crop = item("Strawberry"),
                plantXp = 26.0,
                harvestXp = 29.0,
-               patch = PatchType.ALLOTMENT),
+               patch = PatchType.ALLOTMENT
+    ),
     WATERMELON(seed = -1,
                level = 47,
                flowerProtection = setOf("Nasturtiums", "White lily"),
@@ -82,5 +88,6 @@ enum class SeedType(val seed: Int,
                crop = item("Watermelon"),
                plantXp = 48.5,
                harvestXp = 54.5,
-               patch = PatchType.ALLOTMENT)
+               patch = PatchType.ALLOTMENT
+    )
 }

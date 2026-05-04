@@ -1,6 +1,6 @@
-package game.skill.farming
+package game.skill.farming.patch
 
-import io.luna.game.model.mob.varp.*
+import game.skill.farming.seed.*
 
 /**
  * Represents any allotment patch.
@@ -10,7 +10,7 @@ import io.luna.game.model.mob.varp.*
  */
 class AllotmentPatch(val southEastern: Boolean) : FarmingPatch() {
 
-    private var plantType: SeedType? = null
+    private var plantType: AllotmentSeeds? = null
 
     override fun getVarpValue(): Int {
         var varpValue: Int = 3

@@ -1,6 +1,7 @@
-package game.skill.farming
+package game.skill.farming.patch
 
-import io.luna.game.model.mob.varp.*
+import game.skill.farming.*
+import game.skill.farming.seed.*
 
 /**
  * Represents any herb patch.
