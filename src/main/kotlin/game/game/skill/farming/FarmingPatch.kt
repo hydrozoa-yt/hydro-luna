@@ -10,7 +10,7 @@ abstract class FarmingPatch {
 
     private var isDead: Boolean = false
     private var isDiseased: Boolean = false
-    protected var weeds: Int = 3
+    var weeds: Int = 3
 
     /**
      * If this patchs needs raking.

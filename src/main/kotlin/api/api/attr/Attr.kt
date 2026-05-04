@@ -5,7 +5,6 @@ import api.attr.json.AttributeMapTypeAdapter
 import api.attr.json.IndexedItemTypeAdapter
 import api.attr.json.ItemContainerTypeAdapter
 import api.attr.json.ItemTypeAdapter
-import api.attr.json.HerbPatchTypeAdapter
 import api.predef.*
 import com.google.gson.FieldNamingPolicy
 import com.google.gson.GsonBuilder
@@ -19,7 +18,6 @@ import io.luna.game.model.item.ItemContainer
 import io.luna.game.model.mob.attr.Attributable
 import io.luna.game.model.mob.attr.Attribute
 import io.luna.game.model.mob.attr.AttributeMap
-import game.skill.farming.HerbPatch
 import kotlin.reflect.KClass
 
 /**
@@ -39,7 +37,6 @@ object Attr {
         builder.registerTypeAdapter(AttributeMap::class.java, AttributeMapTypeAdapter)
         builder.registerTypeAdapter(IndexedItem::class.java, IndexedItemTypeAdapter)
         builder.registerTypeAdapter(Item::class.java, ItemTypeAdapter)
-        builder.registerTypeAdapter(HerbPatch::class.java, HerbPatchTypeAdapter)
 
         // Set the serializer.
         Attribute.setGsonInstance(builder.create())

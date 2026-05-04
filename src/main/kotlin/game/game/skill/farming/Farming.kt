@@ -19,7 +19,7 @@ object Farming {
             map[location] = HerbPatch(location)
         }
         map
-    }.persist("herb-patches")
+    }
 
     /**
      * An attribute representing an allotment patch.
