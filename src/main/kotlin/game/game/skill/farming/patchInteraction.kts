@@ -10,14 +10,19 @@ import io.luna.game.model.mob.varp.*
 // config 505 = allotment plots Ardy, probably specific bits for each plot
 
 /* == config 515
+ * bitshifting 24 times leftly changes the herb patch in port phatasmys
  * bitshifting 16 times leftly changes the herb patch in ardy
  * bitshifting 12 times leftly changes the herb patch in catherby
  * bitshifting 0 times leftly changes the herb patch in falador
  */
 
 // object 7849 = flower patch ardy
+
+// object 8150 = herb patch falador
 // object 8151 = herb patch catherby
 // object 8152 = herb patch ardy
+// object 8153 = herb patch port phatasmys
+
 // object 8552 = northern allotment patch catherby
 // object 8553 = southern allotment patch catherby
 // object 8554 = northern allotment patch ardy
