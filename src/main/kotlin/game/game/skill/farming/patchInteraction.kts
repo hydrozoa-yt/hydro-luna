@@ -6,6 +6,8 @@ import io.luna.game.model.mob.varp.*
 
 // config 504 = allotment plots Falador, specific bits for each plot
 
+// todo hook mapupdate event to send correct patches
+
 // raking herb patch falador
 useItem(5341).onObject(8150) {
     plr.submitAction(RakePatchAction(plr, gameObject))
