@@ -63,9 +63,8 @@ HerbSeeds.values().forEach { seed ->
 
             plr.sendMessage("You plant the seed.")
             plr.inventory.remove(seed.seedId)
-            if (patch.plant(seed)) {
-                Farming.sendHerbState(plr)
-            }
+            patch.plant(seed)
+            Farming.sendHerbState(plr)
         }
     }
 }

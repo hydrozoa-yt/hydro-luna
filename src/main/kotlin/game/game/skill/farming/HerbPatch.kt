@@ -25,14 +25,12 @@ class HerbPatch(val location: HerbPatchLocation) : FarmingPatch() {
         return varpValue
     }
 
-    /**
-     * @return true if successfully planted
-     */
     fun plant(seed: HerbSeeds): Boolean {
         if (weeds > 0) {
             return false
         }
         plantType = seed
+        growthStage = 1
         return true
     }
 
