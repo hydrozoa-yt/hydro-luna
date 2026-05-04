@@ -1,38 +1,50 @@
 package game.skill.farming
 
+import api.attr.*
 import api.predef.*
 import api.predef.ext.*
 import game.player.*
+import game.skill.farming.Farming.allotmentPatch
+import game.skill.farming.Farming.herbPatch
 import io.luna.game.action.*
-import io.luna.game.action.impl.LockedAction
+import io.luna.game.model.item.*
 import io.luna.game.model.mob.Player
-import io.luna.game.model.mob.varp.*
 import io.luna.game.model.`object`.GameObject
 
 /**
  * todo
- * @author lare96
+ * @author hydrozoa
  */
-class RakePatchAction(plr: Player, private val patchObject: GameObject) : Action<Player>(plr, ActionType.SOFT) {
+class RakePatchAction(plr: Player, private val patchObject: GameObject) : Action<Player>(plr, ActionType.SOFT, true, 4) {
 
-    private var ticksLeft = 10
-    private var varp = 0
-
-    override fun run(): Boolean {
-        mob.sendMessage("Raking the patch..."+ticksLeft)
-        mob.animation(Animations.SUPERHEAT)
-
-        mob.sendVarp(Varp(varp, 10))
-        mob.sendMessage("Varp: "+varp)
-
-        if (varp >= 725) {
-            return true
-        }
-        varp += 1
-        return false
+    override fun onSubmit() {
+        mob.sendMessage("Raking the patch...")
     }
 
-    override fun getDelay(): Int {
-        return 6
+    override fun run(): Boolean {
+        var patch: FarmingPatch? = null
+        if (Farming.HERB_PATCHES.contains(patchObject.id)) {
+            patch = mob.herbPatch
+        } else if (Farming.ALLOTMENT_PATCHES.contains(patchObject.id)) {
+            patch = mob.allotmentPatch
+        } else {
+            System.err.println("Unknown patch raked")
+            return true
+        }
+
+        if (!patch.needsRaking()) {
+            mob.sendMessage("There's nothing left to rake.")
+            return true
+        }
+
+        mob.animation(Animations.SUPERHEAT) // dummy just for visual feedback, remove once correct anim is found
+        // todo send correct animation
+        // todo send rake gfx
+
+        var completedRaking = patch.rake() ?: true
+        mob.sendVarp(patch.getVarp())
+        mob.inventory.add(Item.byName("Weeds"))
+
+        return completedRaking
     }
 }
