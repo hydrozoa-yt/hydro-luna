@@ -4,7 +4,6 @@ import api.predef.*
 import io.luna.game.event.impl.NpcClickEvent
 import io.luna.game.event.impl.NpcClickEvent.NpcFirstClickEvent
 import io.luna.game.event.impl.NpcClickEvent.NpcSecondClickEvent
-import game.skill.fishing.Tool
 
 /**
  * Submits a [CatchFishAction] to start fishing.
@@ -19,19 +18,19 @@ on(NpcFirstClickEvent::class)
     .then { fish(this, Tool.FISHING_ROD) }
 
 on(NpcFirstClickEvent::class)
-    .match(309, 310, 311, 314, 315, 317, 318)
+    .match(309, 310, 311, 314, 315, 317, 318, 328, 329, 331)
     .then { fish(this, Tool.FLY_FISHING_ROD) }
 
-npc1(312) {
-    fish(this, Tool.LOBSTER_POT)
-}
-
-npc1(313) {
-    fish(this, Tool.BIG_NET)
-}
+on(NpcFirstClickEvent::class)
+    .match(312, 321, 324, 333)
+    .then { fish(this, Tool.LOBSTER_POT) }
 
 on(NpcFirstClickEvent::class)
-    .match(316, 319)
+    .match(313, 322, 334)
+    .then { fish(this, Tool.BIG_NET) }
+
+on(NpcFirstClickEvent::class)
+    .match(316, 319, 320, 323, 325, 326, 327, 330, 332)
     .then { fish(this, Tool.SMALL_NET) }
 
 npc1(1174) {
@@ -40,13 +39,13 @@ npc1(1174) {
 
 // Second click fishing spots.
 on(NpcSecondClickEvent::class)
-    .match(309, 316, 319, 310, 311, 314, 315, 317, 318)
+    .match(309, 310, 311, 314, 315, 316, 317, 318, 319, 320, 323, 325, 326, 327, 328, 329, 330, 331, 332)
     .then { fish(this, Tool.FISHING_ROD) }
 
-npc2(312) {
-    fish(this, Tool.HARPOON)
-}
+on(NpcSecondClickEvent::class)
+    .match(32, 312, 321, 324, 333)
+    .then { fish(this, Tool.HARPOON) }
 
-npc2(313) {
-    fish(this, Tool.SHARK_HARPOON)
-}
+on(NpcSecondClickEvent::class)
+    .match(313, 322, 334)
+    .then { fish(this, Tool.SHARK_HARPOON) }

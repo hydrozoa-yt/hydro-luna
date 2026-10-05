@@ -2,7 +2,6 @@ package game.skill.firemaking
 
 import api.predef.*
 import api.predef.ext.*
-import game.player.Sound
 import io.luna.game.action.impl.LockedAction
 import io.luna.game.model.Direction
 import io.luna.game.model.item.GroundItem
@@ -16,7 +15,9 @@ import io.luna.game.model.`object`.ObjectType
  */
 class LightLogAction(plr: Player, val log: Log, val removeLog: Boolean) :
     LightAction(plr, Firemaking.computeLightDelay(plr, log)) {
- // todo sounds FLINT1, FIRE_LIT,     TINDERBOX_STRIKE(2017),
+
+    // TODO@0.5.0 Implement correct sounds: FLINT1, FIRE_LIT, TINDERBOX_STRIKE(2017)
+
     /**
      * The position that the log will be placed on.
      */

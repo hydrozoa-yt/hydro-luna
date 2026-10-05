@@ -13,7 +13,7 @@ import kotlin.coroutines.CoroutineContext
 object GameCoroutineDispatcher : CoroutineDispatcher() {
 
     override fun dispatch(context: CoroutineContext, block: Runnable) {
-        // Dispatch back to the game thread to run safely.
+        // Dispatch cancellation cleanup to the game thread too.
         gameService.gameExecutor.execute(block)
     }
 }

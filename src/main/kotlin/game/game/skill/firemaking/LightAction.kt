@@ -1,12 +1,11 @@
 package game.skill.firemaking
 
 import api.predef.ext.*
+import game.player.Animations
 import io.luna.game.action.Action
 import io.luna.game.action.ActionType
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.block.Animation
-import game.player.Animations
-import game.player.Sound
 
 /**
  * An [Action] that allows a player to perform a generic firemaking based light action, where the end result
@@ -15,7 +14,8 @@ import game.player.Sound
  * @author lare96
  */
 abstract class LightAction(plr: Player, val originalDelayTicks: Int) : Action<Player>(plr, ActionType.WEAK, false, 1) {
-    // todo sounds FLINT1, FIRE_LIT,     TINDERBOX_STRIKE(2017),
+
+    // TODO@0.5.0 Implement correct sounds: FLINT1, FIRE_LIT, TINDERBOX_STRIKE(2017).
 
     /**
      * The animation delay.

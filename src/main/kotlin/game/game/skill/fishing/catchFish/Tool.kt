@@ -1,8 +1,6 @@
-package game.skill.fishing
+package game.skill.fishing.catchFish
 
-import com.google.common.collect.ImmutableList
-import com.google.common.collect.ImmutableSet
-import game.skill.fishing.Fish.*
+import game.skill.fishing.catchFish.Fish.*
 
 /**
  * An enum representing tools used to catch [Fish].
@@ -24,12 +22,13 @@ enum class Tool(val id: Int,
               animation = 621,
               fish = listOf(SHRIMP, ANCHOVY),
               message = "You cast out your net..."),
-    KARAMBWANJI_SMALL_NET(id = 303,
+    // TODO Karam/bwan/bwanji fishing and cooking
+    /*KARAMBWANJI_SMALL_NET(id = 303,
                           level = 5,
                           speed = 3,
                           animation = 621,
                           fish = listOf(SHRIMP, KARAMBWANJI),
-                          message = "You cast out your line..."),
+                          message = "You cast out your line..."),*/
     FISHING_ROD(id = 307,
                 level = 5,
                 bait = 313,
@@ -91,7 +90,6 @@ enum class Tool(val id: Int,
                   message = "You start Harpooning fish.");
 
     companion object {
-        val ALL: ImmutableList<Tool> = ImmutableList.copyOf(values())
-        val ALL_IDS: ImmutableSet<Int> = ImmutableSet.copyOf(ALL.map { it.id })
+        val ALL_IDS: Set<Int> = entries.map { it.id }.toSet()
     }
 }

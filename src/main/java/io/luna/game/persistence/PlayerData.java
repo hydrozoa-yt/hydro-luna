@@ -1,6 +1,7 @@
 package io.luna.game.persistence;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import io.luna.Luna;
 import io.luna.game.GameService;
 import io.luna.game.GameSettings.PasswordStrength;
@@ -13,6 +14,9 @@ import io.luna.game.model.mob.PlayerPrivacy;
 import io.luna.game.model.mob.PlayerRights;
 import io.luna.game.model.mob.Skill;
 import io.luna.game.model.mob.Spellbook;
+import io.luna.game.model.mob.bot.Bot;
+import io.luna.game.model.mob.bot.brain.BotPersonality;
+import io.luna.game.model.mob.bot.script.BotScriptSnapshot;
 import io.luna.game.model.mob.combat.CombatSpell;
 import io.luna.game.model.mob.combat.CombatStance;
 import org.mindrot.jbcrypt.BCrypt;
@@ -65,6 +69,12 @@ public class PlayerData {
     public boolean autocasting;
     public PlayerAggressionTolerance tolerance;
 
+    // Bot-specific attributes.
+    public List<BotScriptSnapshot> scripts;
+    public BotPersonality personality;
+    public JsonObject preferences;
+    public transient Boolean isBot; // We use boxed version to ensure its set by save()/load()
+
     /**
      * The username of the player this data belongs to.
      */
@@ -83,6 +93,7 @@ public class PlayerData {
      * Loads {@code player}'s data from this model.
      */
     public void load(Player player) {
+        player.getAttributes().load(attributes);
         player.setDatabaseId(databaseId);
         player.setHashedPassword(password);
         player.setPosition(position);
@@ -99,20 +110,25 @@ public class PlayerData {
         player.setUnmuteInstant(unmuteInstant);
         player.setRunEnergy(runEnergy, true);
         player.setWeight(weight, true);
-        player.getAttributes().load(attributes);
         player.getVarpManager().fromMap(varps);
         player.updateSpellbook(spellbook, false);
         player.setTimePlayed(timePlayed);
         player.setCreatedAt(createdAt);
         player.setPrivacyOptions(privacyOptions);
-        player.loadPotionsFromJson(potions);
         player.getCombat().getWeapon().refreshWeapon(lastCombatStance);
         player.getCombat().getSpecialBar().setEnergy(specialAttackEnergy);
-        player.getCombat().setPoisonSeverity(poisonSeverity, false);
-        player.getCombat().getMagic().setTeleBlock(teleBlock, false);
         player.getCombat().getMagic().setAutocastSpell(autocast, false);
         player.getCombat().getMagic().setAutocasting(autocasting);
         player.getTolerance().load(tolerance);
+        if (player.isBot()) {
+            Bot bot = (Bot) player;
+            bot.getScriptStack().load(scripts);
+            bot.setPersonality(personality);
+            bot.getPreferences().load(preferences);
+            isBot = true;
+        } else {
+            isBot = false;
+        }
     }
 
     /**
@@ -151,20 +167,26 @@ public class PlayerData {
         unmuteInstant = player.getUnmuteInstant();
         runEnergy = player.getRunEnergy();
         weight = player.getWeight();
-        attributes = player.getAttributes().save();
         varps = player.getVarpManager().toMap();
         spellbook = player.getSpellbook();
         timePlayed = player.getTimePlayed();
         createdAt = player.getCreatedAt();
         privacyOptions = player.getPrivacyOptions();
-        potions = player.savePotionsToJson();
         lastCombatStance = player.getCombat().getWeapon().getStyleDef().getStance();
         specialAttackEnergy = player.getCombat().getSpecialBar().getEnergy();
-        poisonSeverity = player.getCombat().getPoisonSeverity();
-        teleBlock = player.getCombat().getMagic().getTeleBlock();
         autocast = player.getCombat().getMagic().getAutocastSpell().getSpell();
         autocasting = player.getCombat().getMagic().isAutocasting();
         tolerance = player.getTolerance();
+        if (player.isBot()) {
+            Bot bot = (Bot) player;
+            scripts = bot.getScriptStack().save();
+            personality = bot.getPersonality();
+            preferences = bot.getPreferences().save();
+            isBot = true;
+        } else {
+            isBot = false;
+        }
+        attributes = player.getAttributes().save();
         return this;
     }
 

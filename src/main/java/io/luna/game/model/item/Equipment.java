@@ -2,6 +2,7 @@ package io.luna.game.model.item;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import engine.bot.gear.BotItemTracker;
 import io.luna.game.event.impl.EquipmentChangeEvent;
 import io.luna.game.model.def.EquipmentDefinition;
 import io.luna.game.model.def.EquipmentDefinition.Requirement;
@@ -38,7 +39,6 @@ import java.util.function.IntUnaryOperator;
  * @author lare96
  */
 public final class Equipment extends ItemContainer {
-//todo some bonuses are incorrect, full metal set doesn't make magic bonus -81
 
     /**
      * Represents a single equipment bonus entry and its fixed index in the equipment bonus array.
@@ -484,7 +484,7 @@ public final class Equipment extends ItemContainer {
         EquipmentListener equipmentListener = new EquipmentListener(player);
         this.equipmentListener = equipmentListener;
 
-        setListeners(new PlayerRefreshListener(player, ERROR_MSG), equipmentListener, new WeightListener(player));
+        setListeners(new PlayerRefreshListener(player, ERROR_MSG), equipmentListener, new BotItemTracker(player), new WeightListener(player));
     }
 
     /**

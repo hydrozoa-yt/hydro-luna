@@ -1,11 +1,11 @@
 package game.skill.crafting.potteryCrafting
 
 import api.predef.*
+import game.player.Sound
 import io.luna.game.action.impl.ItemContainerAction.InventoryAction
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.block.Animation
-import game.player.Sound
 
 /**
  * An [InventoryAction] that fires [Unfired] pottery materials.
@@ -26,7 +26,7 @@ class PotteryOvenActionItem(val plr: Player, val unfired: Unfired, amount: Int) 
         }
 
     override fun execute() {
-        mob.playSound(Sound.FURNACE) // TODO maybe POTTERY?
+        mob.playSound(Sound.FURNACE) // TODO@0.5.0 Implement correct sounds: Maybe POTTERY?
         mob.animation(Animation(899))
         mob.crafting.addExperience(unfired.firingExp)
         plr.sendMessage("You fire the ${itemName(unfired.firedId)} in the oven.")

@@ -1,10 +1,10 @@
 package game.skill.mining.prospectOre
 
 import api.predef.*
-import io.luna.game.action.impl.LockedAction
-import io.luna.game.model.mob.Player
 import game.player.Sound
 import game.skill.mining.Ore
+import io.luna.game.action.impl.LockedAction
+import io.luna.game.model.mob.Player
 
 /**
  * A [LockedAction] that performs ore prospecting for a player.
@@ -30,7 +30,7 @@ class ProspectOreAction(plr: Player, private val ore: Ore?) : LockedAction(plr) 
                     null -> mob.sendMessage("There is no ore left in the rock.")
                     else -> mob.sendMessage("This rock contains ${ore.typeName.lowercase()}.")
                 }
-                mob.playSound(Sound.PROSPECT) // TODO Verify if this is the correct sound.
+                mob.playSound(Sound.PROSPECT) // TODO@0.5.0 Verify if this is the correct sound.
                 true
             }
 

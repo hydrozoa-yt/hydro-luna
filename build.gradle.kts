@@ -1,7 +1,9 @@
+import org.gradle.internal.impldep.org.junit.experimental.categories.Categories.CategoryFilter.exclude
+import org.gradle.kotlin.dsl.invoke
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.7.22"
+    val kotlinVersion = "1.9.25"
 
     java
     application
@@ -14,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.code.gson:gson:2.9.1")
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.apache.logging.log4j:log4j-core:2.23.1")
     implementation("org.apache.logging.log4j:log4j-api:2.23.1")
     implementation("org.slf4j:slf4j-nop:2.0.16")
@@ -23,12 +25,13 @@ dependencies {
     implementation("com.google.guava:guava:33.4.8-jre")
     implementation("org.mindrot:jbcrypt:0.4")
     implementation("io.github.classgraph:classgraph:4.8.179")
-    implementation(kotlin("script-runtime"))
+    implementation("org.jetbrains.kotlin:kotlin-script-runtime:1.9.25") {
+        exclude(group = "com.google.guava", module = "guava")
+    }
     implementation(kotlin("reflect"))
     implementation(kotlin("scripting-common"))
-    implementation(platform("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.4"))
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.1"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8")
     implementation("com.zaxxer:HikariCP:5.1.0")
     implementation("org.mockito:mockito-core:5.14.2")
     implementation("mysql:mysql-connector-java:8.0.33")
@@ -46,8 +49,8 @@ application {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 
     sourceSets {
         main {
@@ -79,9 +82,9 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.withType<KotlinCompile>().all {
-    // todo Will need this flag in later versions.
-    //kotlinOptions.freeCompilerArgs = MutableList(1) { "-Xallow-any-scripts-in-source-roots" }
-    kotlinOptions.jvmTarget = "11"
+    // TODO@Lunascape We will need this flag in later Kotlin versions for script files to be recognized.
+    kotlinOptions.freeCompilerArgs = MutableList(1) { "-Xallow-any-scripts-in-source-roots" }
+    kotlinOptions.jvmTarget = "21"
 }
 
 tasks.named<Test>("test") {

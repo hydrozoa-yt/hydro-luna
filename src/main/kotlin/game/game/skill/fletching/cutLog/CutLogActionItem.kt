@@ -2,13 +2,12 @@ package game.skill.fletching.cutLog
 
 import api.predef.*
 import api.predef.ext.*
+import game.player.Animations
+import game.skill.fletching.attachArrow.Arrow
+import game.skill.fletching.stringBow.Bow
 import io.luna.game.action.impl.ItemContainerAction.InventoryAction
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Player
-import game.player.Animations
-import game.player.Sound
-import game.skill.fletching.attachArrow.Arrow
-import game.skill.fletching.stringBow.Bow
 
 /**
  * An [InventoryAction] implementation that cuts logs.
@@ -19,7 +18,7 @@ class CutLogActionItem(plr: Player,
                        val log: Int,
                        val bow: Bow,
                        makeTimes: Int) : InventoryAction(plr, true, 3, makeTimes) {
-// todo sounds     FLETCH_ONCE(812), FLETCH(813),
+    // TODO@0.5.0 Implement correct sounds: FLETCH_ONCE(812), FLETCH(813).
     override fun add(): List<Item> {
         val unstrungItem =
             when (bow) {

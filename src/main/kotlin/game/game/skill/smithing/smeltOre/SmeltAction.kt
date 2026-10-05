@@ -2,13 +2,13 @@ package game.skill.smithing.smeltOre
 
 import api.predef.*
 import api.predef.ext.*
+import game.player.Animations
+import game.player.Sound
+import game.skill.smithing.BarType
 import io.luna.game.action.impl.ItemContainerAction.InventoryAction
 import io.luna.game.model.item.Equipment
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Player
-import game.player.Animations
-import game.player.Sound
-import game.skill.smithing.BarType
 
 /**
  * An [InventoryAction] implementation that handles the smelting action.
@@ -31,7 +31,7 @@ class SmeltAction(plr: Player, val barType: BarType, times: Int) : InventoryActi
         val wearingGoldsmithGauntlet = mob.equipment.computeIdForIndex(Equipment.HANDS) == 776
         val xp = if (wearingGoldsmithGauntlet) barType.xp * 2.5 else barType.xp
 
-        mob.playSound(Sound.FURNACE) // TODO Verify if this is the correct sound.
+        mob.playSound(Sound.FURNACE) // TODO@0.5.0 Verify if this is the correct sound.
         mob.animation(Animations.SMELT)
         if (currentAdd.isNotEmpty()) { // Only add XP if we're getting a bar (for Iron ore).
             val oreRequired = barType.oreRequired

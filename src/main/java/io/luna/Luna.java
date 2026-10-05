@@ -1,7 +1,5 @@
 package io.luna;
 
-import io.luna.game.model.Position;
-import io.luna.game.model.collision.CollisionMatrix;
 import io.luna.util.GsonUtils;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.JdkLoggerFactory;
@@ -26,6 +24,12 @@ import java.nio.file.Paths;
  * @author lare96
  */
 public final class Luna {
+
+    //TODO@1.0 Small and basic server control panel for offline control (in the future, sync this control panel with a phone app)
+    // kick, ban, mute player
+    // move player to home
+    // shutdown server
+    // dynamically adjust active bot count
 
     /**
      * The asynchronous logger. Initialized after Log4j system properties are configured.
@@ -75,9 +79,7 @@ public final class Luna {
             context.getServer().init();
         } catch (Exception e) {
             logger.fatal("Luna could not be started.", e);
-
-            // Note: non-zero exit code is typically preferable for startup failure.
-            System.exit(0);
+            System.exit(1);
         }
     }
 
@@ -88,7 +90,7 @@ public final class Luna {
      * @throws IOException If the file cannot be read or parsed.
      */
     private static LunaSettings loadSettings() throws IOException {
-        return GsonUtils.readAsType(Paths.get("data", "luna.json"), LunaSettings.class);
+        return GsonUtils.readAsType(Paths.get("data", "luna.jsonc"), LunaSettings.class);
     }
 
     /**

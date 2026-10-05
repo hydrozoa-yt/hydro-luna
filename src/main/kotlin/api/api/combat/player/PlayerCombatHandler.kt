@@ -1,9 +1,13 @@
 package api.combat.player
 
+import api.combat.player.PlayerCombatHandler.consumeCombat
+import api.combat.player.PlayerCombatHandler.consumeDefence
 import api.combat.player.PlayerCombatHandler.playerAttack
 import api.combat.player.PlayerCombatHandler.playerCombat
 import api.combat.player.PlayerCombatHandler.playerDefence
 import api.combat.player.PlayerCombatHandler.playerStopAttack
+import api.combat.player.PlayerCombatHandler.supplyAttack
+import api.combat.player.PlayerCombatHandler.testStopAttack
 import api.combat.player.dsl.PlayerAttackCombatDataReceiver
 import api.combat.player.dsl.PlayerAttackCombatFilter
 import api.combat.player.dsl.PlayerDefenceCombatDataReceiver
@@ -160,12 +164,14 @@ object PlayerCombatHandler {
             if (hook.filter(receiver)) {
                 hook.defence(receiver)
                 action.damage = receiver.damage
-                if(action.damage != null) {
+                if (action.damage != null) {
                     if (receiver.animationId != null) {
                         player.animation(Animation(receiver.animationId!!))
                     } else {
-                        val animationId = player.combat.getDefenceAnimation(action.damage.type)
-                        player.animation(Animation(animationId))
+                        val animationId = player.combat.getDefenceAnimation(action.damage.type, action.damage.rawAmount)
+                        if (animationId > 0) {
+                            player.animation(Animation(animationId))
+                        }
                     }
                 }
                 return

@@ -1,10 +1,10 @@
 package game.skill.crafting.hideTanning
 
+import game.skill.crafting.hideTanning.Hide.*
 import io.luna.game.model.mob.Player
 import io.luna.game.model.mob.overlay.StandardInterface
 import io.luna.net.msg.out.WidgetItemModelMessageWriter
 import io.luna.net.msg.out.WidgetTextMessageWriter
-import game.skill.crafting.hideTanning.Hide.*
 
 /**
  * The interface opened when tanning hides.
@@ -28,6 +28,11 @@ class TanInterface : StandardInterface(14670) {
                 RED_D_LEATHER,
                 BLACK_D_LEATHER
         )
+
+        /**
+         * A map of hides to the make all button.
+         */
+        val hideToMakeAll = HashMap<Hide, Int>()
     }
 
     override fun onOpen(plr: Player) {

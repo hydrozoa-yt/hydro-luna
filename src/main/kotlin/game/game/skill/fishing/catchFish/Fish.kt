@@ -1,8 +1,7 @@
-package game.skill.fishing
+package game.skill.fishing.catchFish
 
 import api.predef.*
 import io.luna.game.model.item.Item
-import game.skill.fishing.catchFish.CatchFishAction
 import kotlin.math.floor
 
 /**

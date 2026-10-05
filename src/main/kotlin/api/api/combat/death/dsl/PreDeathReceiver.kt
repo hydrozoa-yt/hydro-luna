@@ -1,7 +1,7 @@
 package api.combat.death.dsl
 
 import api.predef.*
-import io.luna.game.model.mob.Player
+import engine.combat.status.StatusEffectType
 
 /**
  * A receiver class used during the **pre-death stage** of a [DeathHookReceiver].
@@ -23,12 +23,8 @@ class PreDeathReceiver(val receiver: DeathHookReceiver<*>) {
      */
     fun reset() {
         val victim = receiver.victim
-        if (victim is Player) {
-            victim.overlays.closeWindows()
-        }
         victim.hitpoints.level = 0
         victim.combat.damageStack.clear()
-        victim.actions.interruptWeak()
-        victim.combat.poisonSeverity = 0
+        victim.status.remove(StatusEffectType.POISONED)
     }
 }

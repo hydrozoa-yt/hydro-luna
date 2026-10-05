@@ -8,7 +8,6 @@ import game.skill.woodcutting.Woodcutting.treeHealth
 import game.skill.woodcutting.searchNest.Nest
 import io.luna.Luna
 import io.luna.game.action.impl.ItemContainerAction.AnimatedInventoryAction
-import io.luna.game.action.impl.ItemContainerAction.InventoryAction
 import io.luna.game.model.EntityState
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.Player
@@ -59,7 +58,7 @@ class CutTreeAction(plr: Player, val axe: Axe, val tree: Tree, val treeObj: Game
 
     override fun execute() {
         if (currentAdd.isNotEmpty()) {
-            if (rand().nextInt(256) == 0) {
+            if (rand(256) == 0) {
                 val nest = Nest.VALUES.random()
                 mob.sendMessage("A bird's nest drops to the floor!")
                 world.addItem(nest.id, 1, mob.position, mob)

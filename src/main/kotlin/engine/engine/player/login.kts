@@ -1,5 +1,8 @@
 package engine.player
 
+import io.luna.game.model.mob.bot.Bot
+import api.bot.zone.SubZone
+import api.bot.zone.Zone
 import api.predef.*
 import engine.combat.prayer.CombatPrayer
 import engine.player.punishment.PunishmentHandler
@@ -38,10 +41,16 @@ on(LoginEvent::class, EventPriority.HIGH) {
 
     plr.sendMessage("Welcome to Luna.")
     PunishmentHandler.notifyIfMuted(plr)
-    plr.walking.setRunning(plr.varpManager.getValue(PersistentVarp.RUNNING) == 1)
+    plr.walking.isRunning = plr.varpManager.getValue(PersistentVarp.RUNNING) == 1
     if (Luna.settings().game().betaMode()) {
         plr.sendMessage("Server currently running in ${Luna.settings().game().runtimeMode()} mode.")
     }
-    plr.combat.onLogin()
     plr.tolerance.ensureDefaults()
+    plr.status.load()
+    if(plr is Bot) {
+        val bot = plr as Bot
+        Zone.updateZone(bot, bot.position.regionId)
+        SubZone.updateLocalSubZones(bot, bot.position.regionId)
+        SubZone.updateSubZone(bot)
+    }
 }

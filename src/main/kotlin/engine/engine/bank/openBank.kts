@@ -13,6 +13,7 @@ on(ServerLaunchEvent::class) {
     Banking.loadBankingNpcs()
     for (id in Banking.bankingNpcs) {
         npc1(id) { openDialogue(plr, id) }
+        npc2(id) { plr.bank.open() }
     }
 
     // Load all banking objects, make them open the bank.
@@ -21,10 +22,9 @@ on(ServerLaunchEvent::class) {
 
         // Add listeners for "Use"
         object1(id) {
-            val npc = plr.localMobs.localNpcs().filter { Banking.bankingNpcs.contains(it.id) }
-                .filter { it.position.isWithinDistance(gameObject.position, 1) }.findFirst()
-            if (npc.isPresent) {
-                openDialogue(plr, npc.get().id)
+            val npc = world.locator.findViewableNpcs(plr) { Banking.bankingNpcs.contains(it.id) }.firstOrNull()
+            if (npc != null) {
+                openDialogue(plr, npc.id)
             } else {
                 // Use default banker if no NPC is nearby.
                 openDialogue(plr, Banking.DEFAULT_BANKER)

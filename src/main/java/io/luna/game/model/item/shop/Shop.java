@@ -2,6 +2,7 @@ package io.luna.game.model.item.shop;
 
 import api.shop.dsl.ShopHandler.PendingShopItem;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Predicate;
 import io.luna.game.model.World;
 import io.luna.game.model.def.ItemDefinition;
 import io.luna.game.model.item.Inventory;
@@ -9,6 +10,7 @@ import io.luna.game.model.item.Item;
 import io.luna.game.model.item.ItemContainer;
 import io.luna.game.model.item.ItemContainer.StackPolicy;
 import io.luna.game.model.mob.Player;
+import io.luna.game.model.mob.bot.Bot;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -96,7 +98,7 @@ public final class Shop {
     /**
      * Shared number formatter used when displaying price messages to players.
      */
-    private static final NumberFormat PRICE_FORMAT = NumberFormat.getInstance(Locale.UK);
+    private static final NumberFormat PRICE_FORMAT = NumberFormat.getInstance(Locale.CANADA);
 
     /**
      * The world instance used for scheduling restock tasks.
@@ -152,6 +154,9 @@ public final class Shop {
      */
     private final Set<Integer> restockItems = new HashSet<>();
 
+    // todo docs
+    private final Predicate<Bot> botAccess;
+
     /**
      * Creates a new {@link Shop}.
      * <p>
@@ -168,12 +173,13 @@ public final class Shop {
      * @param buyPolicy The policy controlling what items may be sold to this shop.
      * @param currency The currency item used for transactions.
      */
-    public Shop(World world, String name, RestockPolicy restockPolicy, BuyPolicy buyPolicy, Currency currency) {
+    public Shop(World world, String name, RestockPolicy restockPolicy, BuyPolicy buyPolicy, Currency currency,Predicate<Bot> botAccess) {
         this.world = world;
         this.name = name;
         this.restockPolicy = restockPolicy;
         this.buyPolicy = buyPolicy;
         this.currency = currency;
+        this.botAccess = botAccess;
 
         amountMap = new OptionalInt[40];
         Arrays.fill(amountMap, OptionalInt.empty());
@@ -645,5 +651,9 @@ public final class Shop {
      */
     public Set<Integer> getRestockItems() {
         return restockItems;
+    }
+
+    public Predicate<Bot> getBotAccess() {
+        return botAccess;
     }
 }

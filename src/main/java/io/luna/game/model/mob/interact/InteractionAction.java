@@ -102,7 +102,8 @@ public final class InteractionAction extends Action<Player> {
      * The listeners still waiting to be satisfied for this interaction.
      */
     private List<InteractionActionListener> listeners;
-
+//todo docs
+    private boolean retry;
     /**
      * Creates a new {@link InteractionAction}.
      *
@@ -116,7 +117,8 @@ public final class InteractionAction extends Action<Player> {
         this.listeners = listeners;
         this.target = target;
         this.event = event;
-    }
+    } // todo navigation action can handle most of this?
+    // todo allow for navigation action to use current path? disablePathfinding() and cannot be in continuous mode
 
     @Override
     public void onSubmit() {
@@ -168,7 +170,7 @@ public final class InteractionAction extends Action<Player> {
                 it.remove();
                 continue;
             }
-            if (collisionManager.reached(mob.getPosition(), target, policy)) {
+            if (collisionManager.reached(mob, target, policy)) {
                 // We've reached a listener with a satisfied policy, queue it for later.
                 if (trigger == null) {
                     trigger = policy;
@@ -184,6 +186,10 @@ public final class InteractionAction extends Action<Player> {
             onReached(target instanceof Mob, instantEvent, trigger, pending);
             return true;
         } else if (mob.getWalking().isEmpty() && !listeners.isEmpty()) {
+            if(!retry) {
+                retry = true;
+                return false;
+            }
             onStanding();
             return true;
         } else if (listeners.isEmpty()) {
@@ -234,9 +240,9 @@ public final class InteractionAction extends Action<Player> {
      */
     private boolean moveBeforeInteract(boolean isMob, InteractionPolicy trigger) {
         boolean moved = false;
-        if ((isMob || target.size() == 1) && trigger.getType() == InteractionType.SIZE &&
+        if ((isMob || mob.isBot() || target.size() == 1) && trigger.getType() == InteractionType.SIZE &&
                 trigger.getDistance() == 1) {
-            if (mob.getCombat().isImmobilized()) {
+            if (mob.getStatus().isImmobilized()) {
                 // We need to move in order to interact, but we're immobilized.
                 interrupt();
                 return false;

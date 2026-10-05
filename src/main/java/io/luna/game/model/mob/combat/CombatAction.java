@@ -7,10 +7,12 @@ import io.luna.game.model.Position;
 import io.luna.game.model.mob.Mob;
 import io.luna.game.model.mob.Npc;
 import io.luna.game.model.mob.Player;
+import io.luna.game.model.mob.bot.Bot;
 import io.luna.game.model.mob.combat.attack.CombatAttack;
 import io.luna.game.model.mob.combat.state.CombatContext;
 import io.luna.game.model.mob.interact.InteractionPolicy;
 import io.luna.game.model.mob.movement.NavigationRequest;
+import io.luna.game.model.mob.movement.PathfinderType;
 
 /**
  * An {@link Action} that drives a mob's active combat loop against its current
@@ -45,6 +47,7 @@ public final class CombatAction extends Action<Mob> {
      * @param mob The mob executing combat.
      */
     public CombatAction(Mob mob) {
+        // TODO@0.5.0 Combat should be taken outside of the action system. It needs to run BEFORE all actions.
         super(mob, ActionType.WEAK);
         combat = mob.getCombat();
     }
@@ -64,7 +67,7 @@ public final class CombatAction extends Action<Mob> {
         }
 
         // Apply auto-retaliate if a valid aggressor was remembered.
-        if (combat.getAutoRetaliateTarget() != null && combat.isAutoRetaliate()) {
+        if (combat.getAutoRetaliateTarget() != null && (combat.isAutoRetaliate() || mob instanceof Bot)) {
             if (combat.getAutoRetaliateTarget().isAlive()) {
                 combat.setTarget(combat.getAutoRetaliateTarget());
             }
@@ -104,7 +107,7 @@ public final class CombatAction extends Action<Mob> {
             } else if (!target.equals(mob.getNavigator().getCurrentTarget()) && mob instanceof Player) {
                 // For players, submit a navigation request to track our target if needed.
                 var request = NavigationRequest.builder(mob).policy(policy).continuous(true).
-                        target(combat.getTarget()).build();
+                        target(combat.getTarget()).pathfinder(PathfinderType.PLAYER).build();
                 mob.getNavigator().submit(request);
             }
             // Stay active while combat should continue.
@@ -120,10 +123,7 @@ public final class CombatAction extends Action<Mob> {
         if (mob instanceof Player && PlayerCombatHandler.INSTANCE.testStopAttack((Player) mob, attack)) {
             return clearTarget();
         }
-        if (mob instanceof Player)
-            System.out.println("debug");
-        //       todo instant specials don't work because: youre setting ignoreattackdelay within attack.apply()!!
-        //     set it further up the chain
+
         // Attack as soon as the combat delay permits it.
         if (combat.isAttackReady() || attack.isIgnoreAttackDelay()) {
             mob.interact(target);
@@ -151,7 +151,7 @@ public final class CombatAction extends Action<Mob> {
         if (!combat.checkMultiCombat(target)) {
             return false;
         } else if (mob.getPosition().equals(target.getPosition())) {
-            if (mob.getCombat().isImmobilized()) {
+            if (mob.getStatus().isImmobilized()) {
                 // If we're frozen and target is occupying our tile, we cannot attack.
                 return false;
             }

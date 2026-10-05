@@ -4,6 +4,7 @@ import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Multiset.Entry;
+import engine.bot.gear.BotItemTracker;
 import io.luna.game.model.def.ItemDefinition;
 import io.luna.game.model.item.RefreshListener.PlayerRefreshListener;
 import io.luna.game.model.mob.Player;
@@ -29,7 +30,7 @@ import java.util.OptionalInt;
  * <p>
  * <b>Note handling:</b>
  * <ul>
- *     <li>Deposits normalize noted items into their unnoted id (so banks store the “real” item).</li>
+ *     <li>Deposits normalize noted items into their unnoted id (so banks store the "real" item).</li>
  *     <li>Withdrawals may convert to noted form when {@link PersistentVarp#WITHDRAW_AS_NOTE} is enabled and the item has
  *     a valid noted id.</li>
  * </ul>
@@ -65,7 +66,7 @@ public final class Bank extends ItemContainer {
     }
 
     /**
-     * A “bank-like” interface that reuses the bank widget layout to display an arbitrary list of items.
+     * A "bank-like" interface that reuses the bank widget layout to display an arbitrary list of items.
      * <p>
      * This is useful for any UI that wants the familiar bank view (scrollable item grid), without binding to the
      * player's actual bank contents. Implementations provide their own item list via {@link #buildDisplayItems(Player)}.
@@ -189,7 +190,7 @@ public final class Bank extends ItemContainer {
                 player,
                 bankInterface,
                 "You do not have enough bank space to deposit that."
-        ));
+        ), new BotItemTracker(player));
     }
 
     /**

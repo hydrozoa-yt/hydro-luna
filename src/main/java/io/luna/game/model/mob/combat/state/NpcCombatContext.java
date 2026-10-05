@@ -2,6 +2,7 @@ package io.luna.game.model.mob.combat.state;
 
 import api.combat.npc.NpcCombatHandler;
 import com.google.common.collect.ImmutableSet;
+import engine.combat.status.StatusEffectType;
 import io.luna.game.action.impl.NpcRetreatAction;
 import io.luna.game.action.impl.NpcRetreatAction.RetreatPolicy;
 import io.luna.game.model.item.Equipment.EquipmentBonus;
@@ -146,7 +147,7 @@ public final class NpcCombatContext extends CombatContext<Npc> {
     }
 
     @Override
-    public int getDefenceAnimation(CombatDamageType type) {
+    public int getDefenceAnimation(CombatDamageType type, int damage) {
         return mob.combatDef().getDefenceAnimation();
     }
 
@@ -164,7 +165,7 @@ public final class NpcCombatContext extends CombatContext<Npc> {
     public void prepareForExecution() {
         if (!isDisabled()) {
             mob.setHealth(1);
-            setPoisonSeverity(0);
+            mob.getStatus().remove(StatusEffectType.POISONED);
             setDisabled(true);
             mob.getWalking().setLocked(true);
             target = null;
@@ -176,9 +177,11 @@ public final class NpcCombatContext extends CombatContext<Npc> {
      * <p>
      * The animation ID is taken directly from the NPC's combat definition.
      */
-    public void handleDefaultDefence(CombatDamageType type) {
-        int id = getDefenceAnimation(type);
-        mob.animation(new Animation(id));
+    public void handleDefaultDefence(CombatDamageType type, int damage) {
+        int id = getDefenceAnimation(type, damage);
+        if (id > 0) {
+            mob.animation(new Animation(id));
+        }
     }
 
     /**

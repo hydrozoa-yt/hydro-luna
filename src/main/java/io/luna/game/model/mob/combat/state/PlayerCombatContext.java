@@ -1,6 +1,5 @@
 package io.luna.game.model.mob.combat.state;
 
-import api.combat.magic.TeleBlockAction;
 import api.combat.player.PlayerCombatHandler;
 import api.combat.specialAttack.SpecialAttackHandler;
 import api.combat.specialAttack.dsl.SpecialAttackBuilderReceiver;
@@ -19,7 +18,6 @@ import io.luna.game.model.mob.combat.AmmoType;
 import io.luna.game.model.mob.combat.CombatFormula;
 import io.luna.game.model.mob.combat.CombatFormula.PhysicalType;
 import io.luna.game.model.mob.combat.CombatStance;
-import io.luna.game.model.mob.combat.PoisonAction;
 import io.luna.game.model.mob.combat.attack.CombatAttack;
 import io.luna.game.model.mob.combat.attack.PlayerMagicCombatAttack;
 import io.luna.game.model.mob.combat.attack.PlayerMeleeCombatAttack;
@@ -133,11 +131,14 @@ public final class PlayerCombatContext extends CombatContext<Player> {
         }
 
         // Handle a special attack if applicable.
-        if (specialBar.isActivated() && !magic.isCasting()) {
+        if ((specialBar.isActivated() || specialBar.isForced()) && !magic.isCasting()) {
             SpecialAttackDataReceiver receiver = SpecialAttackHandler.INSTANCE.specialAttackData(this);
             CombatAttack<Player> attack =
                     receiver.getAttackTransformer().invoke(new SpecialAttackBuilderReceiver(mob, victim, receiver));
             if (attack != null) {
+                if(receiver.getInstant()) {
+                    attack.setIgnoreAttackDelay(true);
+                }
                 return attack;
             }
         }
@@ -204,11 +205,16 @@ public final class PlayerCombatContext extends CombatContext<Player> {
     }
 
     @Override
-    public int getDefenceAnimation(CombatDamageType type) {
+    public int getDefenceAnimation(CombatDamageType type, int damage) {
         int shieldId = player.getEquipment().computeIdForIndex(Equipment.SHIELD);
         if (shieldId > 0 && type != CombatDamageType.MAGIC) {
             // Block animation for non-magic based attacks when a shield is equipped.
             return 1156;
+        }
+
+        // 0 damage with no shield equipped results in no animation.
+        if(damage == 0) {
+            return -1;
         }
 
         int weaponId = player.getEquipment().computeIdForIndex(Equipment.WEAPON);
@@ -223,21 +229,6 @@ public final class PlayerCombatContext extends CombatContext<Player> {
         }
         // Otherwise, use the default defence animation from 'weapon_type_data.jsonc'.
         return weapon.getStyleDef().getDefenceAnimation();
-    }
-
-    /**
-     * Restores persistent combat status actions after the player logs in.
-     * <p>
-     * If the player still has active status effects stored on login, the corresponding action is resubmitted so the
-     * effect continues processing normally.
-     */
-    public void onLogin() {
-        if (getPoisonSeverity() > 0) {
-            player.getActions().submitIfAbsent(new PoisonAction(player, false));
-        }
-        if (magic.getTeleBlock() > 0) {
-            player.getActions().submitIfAbsent(new TeleBlockAction(player));
-        }
     }
 
     /**

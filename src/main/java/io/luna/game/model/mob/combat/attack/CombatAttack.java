@@ -7,6 +7,8 @@ import io.luna.game.model.mob.combat.damage.CombatDamage;
 import io.luna.game.model.mob.combat.damage.CombatDamageAction;
 import io.luna.game.model.mob.interact.InteractionPolicy;
 
+import java.time.Instant;
+
 /**
  * Represents a prepared combat attack from one {@link Mob} onto another. It essentially models a single combat turn,
  * swing, or attack attempt.
@@ -19,6 +21,9 @@ import io.luna.game.model.mob.interact.InteractionPolicy;
  * @author lare96
  */
 public abstract class CombatAttack<T extends Mob> {
+
+    // TODO@0.5.0 Correct weapon sounds. Think this can be done with other combat weapons though through JSON.
+    //  Or it might be randomized, some tests need to be done.
 
     /**
      * The mob performing the attack.
@@ -54,6 +59,11 @@ public abstract class CombatAttack<T extends Mob> {
      * If this attack should ignore the attack delay (attack instantly, do not reset attack delay after).
      */
     private boolean ignoreAttackDelay;
+
+    /**
+     * A timestamp set when this attack is applied using {@link #apply()}.
+     */
+    private Instant timestamp;
 
     /**
      * Creates a new {@link CombatAttack}.
@@ -108,15 +118,12 @@ public abstract class CombatAttack<T extends Mob> {
             attacker.getCombat().setTarget(null);
             return;
         }
-        if (!isIgnoreAttackDelay()) {
-            // TODO Wiki states if you open with an instant special attack (gmaul) it will still give you the
-            //  delay after. We can simulate this behaviour by adding an additional "|| combat.isAttackReady()" check.
-            attacker.getCombat().setAttackDelay(delay);
-        }
+        attacker.getCombat().setAttackDelay(delay);
         attacker.getCombat().setLastCombatWith(victim);
         attacker.getCombat().resetCombatTimer();
         victim.getCombat().setLastCombatWith(attacker);
         victim.getCombat().resetCombatTimer(); // Once targeted and engaged, cannot safely log out or attack anyone else.
+        timestamp = Instant.now();
         attack();
     }
 
@@ -242,5 +249,12 @@ public abstract class CombatAttack<T extends Mob> {
      */
     public void setIgnoreAttackDelay(boolean ignoreAttackDelay) {
         this.ignoreAttackDelay = ignoreAttackDelay;
+    }
+
+    /**
+     * @return The timestamp set when this attack is applied, or {@code null} if this attack hasn't been applied yet.
+     */
+    public Instant getTimestamp() {
+        return timestamp;
     }
 }

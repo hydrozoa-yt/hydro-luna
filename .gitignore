@@ -1,7 +1,9 @@
 /wip
+/data/game/bots/items/economy/prices.json
 data/archives
 /data/game/saved_players
-/data/game/saved_bots
+/data/game/bots/saved_bots
+/data/game/bots/login_requests.json
 /.idea/
 /target/
 /.settings/

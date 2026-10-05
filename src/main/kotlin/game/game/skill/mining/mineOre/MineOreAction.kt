@@ -2,19 +2,18 @@ package game.skill.mining.mineOre
 
 import api.predef.*
 import api.predef.ext.*
-import io.luna.game.action.impl.ItemContainerAction.AnimatedInventoryAction
-import io.luna.game.model.EntityState
-import io.luna.game.model.item.Item
-import io.luna.game.model.mob.Player
-import io.luna.game.model.mob.block.Animation
-import io.luna.game.model.`object`.GameObject
-import game.player.Sound
 import game.skill.Skills
 import game.skill.mining.Mining
 import game.skill.mining.Ore
 import game.skill.mining.Ore.PURE_ESSENCE
 import game.skill.mining.Ore.RUNE_ESSENCE
 import game.skill.mining.Pickaxe
+import io.luna.game.action.impl.ItemContainerAction.AnimatedInventoryAction
+import io.luna.game.model.EntityState
+import io.luna.game.model.item.Item
+import io.luna.game.model.mob.Player
+import io.luna.game.model.mob.block.Animation
+import io.luna.game.model.`object`.GameObject
 
 /**
  * An [AnimatedInventoryAction] that will enable the mining of rocks.
@@ -24,7 +23,7 @@ import game.skill.mining.Pickaxe
 class MineOreAction(plr: Player, val pick: Pickaxe, val ore: Ore, val rockObj: GameObject) :
     AnimatedInventoryAction(plr, 1, 4, Int.MAX_VALUE) {
 
-        // todo sounds MINE_QUICK, MINE, FOUND_GEM, MINE_3, MINING_3, MINE_5,
+        // TODO@0.5.0 Implement correct sounds: MINE_QUICK, MINE, FOUND_GEM, MINE_3, MINING_3, MINE_5.
     override fun executeIf(start: Boolean) = when {
         mob.mining.level < ore.level -> {
             // Check if we have required level.
