@@ -1,4 +1,4 @@
-package api.bot.webwalk
+package api.bot.webwalk.generate
 
 import io.luna.game.model.Position
 

@@ -1,5 +1,8 @@
-package api.bot.webwalk
+package api.bot.webwalk.generate
 
+import api.bot.webwalk.data.WebWalkDataException
+import api.bot.webwalk.data.WebWalkLoader
+import api.bot.webwalk.model.EdgeType
 import api.bot.zone.SubZone
 import api.bot.zone.Zone
 import api.predef.*
@@ -14,8 +17,8 @@ import io.luna.game.model.path.FallbackPathfinder
 import io.luna.game.model.path.PathResultType
 import io.luna.game.model.path.astar.LongRangePathfinder
 import io.luna.game.model.path.route.RoutePathfinder
-import io.luna.game.model.path.route.StepValidator
 import io.luna.game.model.path.route.RouteStrategy
+import io.luna.game.model.path.route.StepValidator
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -53,6 +56,24 @@ object WebWalkLiveGenerator {
      * How far from a seed, in tiles, a tile to stand on is looked for.
      */
     private const val SNAP_RADIUS = 4
+
+    /**
+     * The seed of the scattered hubs, so that the same ones are made every time.
+     */
+    private const val SCATTER_SEED = 377L
+
+    /**
+     * The width and length of the cells that get a scattered hub. Hubs of cells next to each other are less than twice this
+     * far apart, which has to be inside the range of [RoutePathfinder] (56 tiles), so that the walks between them are
+     * found without a long range search.
+     */
+    private const val SCATTER_CELL_SIZE = 24
+
+    /**
+     * How far apart, in tiles, nodes may be to be linked first. This is the range of [RoutePathfinder], so every walk that
+     * the scattered hubs make possible is tried.
+     */
+    private const val NEAR_LINK_RADIUS = 56
 
     /**
      * How many times a climb is made to find the lowest tile it arrives at, enough to find every tile of a small area.
@@ -105,7 +126,8 @@ object WebWalkLiveGenerator {
             }
         }
         report.count("climbs", climbs.size)
-        return Gathered(climbs, hubs(report), report)
+        val hubs = hubs(report)
+        return Gathered(climbs, hubs + scatter(hubs, report), report)
     }
 
     /**
@@ -216,6 +238,27 @@ object WebWalkLiveGenerator {
         LadderDestination.climbingTiles(obj).sortedWith(compareBy({ it.z }, { it.x }, { it.y }))
 
     /**
+     * Spreads hubs over the overworld, which is the ground floor above the dungeons, so that no walk of the graph is longer
+     * than the range of the route pathfinder. Cells that already have a hub are left alone.
+     */
+    private fun scatter(hubs: List<GeneratedHub>, report: GenerationReport): List<GeneratedHub> {
+        val table = ctx.cache.mapIndexTable
+        val regions = table.allRegions.map { it.absPosition }.filter { it.y < LadderType.CELLAR_OFFSET }
+        if (regions.isEmpty()) {
+            return emptyList()
+        }
+        val occupied = hubs.filter { it.pos.z == 0 }
+            .map { Pair(it.pos.x / SCATTER_CELL_SIZE, it.pos.y / SCATTER_CELL_SIZE) }.toSet()
+        val scattered = ScatterHubs.generate(SCATTER_SEED, SCATTER_CELL_SIZE,
+                                             regions.minOf { it.x }, regions.minOf { it.y },
+                                             regions.maxOf { it.x } + 63, regions.maxOf { it.y } + 63, 0, occupied) {
+            table.indexTable.containsKey(it.region) && LadderDestination.canLand(it)
+        }
+        report.count("scattered hubs", scattered.size)
+        return scattered
+    }
+
+    /**
      * Makes the hubs of the zones, their banks and the sub-zones.
      */
     private fun hubs(report: GenerationReport): List<GeneratedHub> {
@@ -286,19 +329,53 @@ object WebWalkLiveGenerator {
         val labels = WalkableComponents { x, y, z, dx, dy ->
             StepValidator.canTravel(view, z, x, y, dx, dy, 1, 0, RouteStrategy.NORMAL)
         }.label(nodes.map { it.position })
-        val componentById = nodes.indices.associate { nodes[it].id to labels[it] }
         gathered.report.count("walkable areas", labels.toSet().size)
 
-        val links = WalkLinker({ from, to ->
+        // A scattered hub in an area that has no other node can't be walked to from anywhere that matters, so it is left out.
+        val anchored = nodes.indices.filter { ScatterHubs.TAG !in nodes[it].tags }.map { labels[it] }.toSet()
+        val dropped = nodes.indices.filter { ScatterHubs.TAG in nodes[it].tags && labels[it] !in anchored }
+            .map { nodes[it].id }.toSet()
+        gathered.report.count("scattered hubs left out", dropped.size)
+        val componentById = nodes.indices.associate { nodes[it].id to labels[it] }
+
+        // Nodes should be close together, so the walks between them stay inside the range of the route pathfinder. A
+        // scattered hub with no walk to a node in range is only in a pocket that long walks lead to, so it is left out too,
+        // and the rest are linked again without it, until none are left that have to be.
+        val pathfinderCost = { from: Position, to: Position ->
             val result = pathfinder.find(from, to)
             when (result.type) {
                 PathResultType.COMPLETE, PathResultType.EMPTY -> walkingTicks(from, result.path)
                 else -> null
             }
-        }).link(nodes) { componentById.getValue(it.id) }
-        gathered.report.count("nodes", graph.nodes.size)
+        }
+        var kept = nodes.filter { it.id !in dropped }
+        var links: List<GeneratedLink>
+        var isolated = 0
+        while (true) {
+            links = WalkLinker(pathfinderCost, nearRadius = NEAR_LINK_RADIUS)
+                .link(kept) { componentById.getValue(it.id) }
+            val byId = kept.associateBy { it.id }
+            val inRange = HashSet<String>()
+            for (link in links) {
+                if (byId.getValue(link.from).position.computeLongestDistance(byId.getValue(link.to).position) <=
+                    NEAR_LINK_RADIUS) {
+                    inRange += link.from
+                    inRange += link.to
+                }
+            }
+            val pruned = kept.filter { ScatterHubs.TAG in it.tags && it.id !in inRange }.map { it.id }.toSet()
+            if (pruned.isEmpty()) {
+                break
+            }
+            isolated += pruned.size
+            kept = kept.filter { it.id !in pruned }
+        }
+        gathered.report.count("scattered hubs left out (nothing in range)", isolated)
+        val keptIds = kept.map { it.id }.toSet()
+        val hubs = gathered.hubs.filter { it.id in keptIds }
+        gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
-        return Output(doors.obstacles, climbsText, WebWalkWriter.hubs(gathered.hubs, links))
+        return Output(doors.obstacles, climbsText, WebWalkWriter.hubs(hubs, links))
     }
 
     /**

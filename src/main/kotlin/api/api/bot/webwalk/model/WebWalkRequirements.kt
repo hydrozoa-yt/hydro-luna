@@ -1,4 +1,4 @@
-package api.bot.webwalk
+package api.bot.webwalk.model
 
 /**
  * An item (and how many of it) that a bot must carry, in its inventory or equipment, to use an edge.

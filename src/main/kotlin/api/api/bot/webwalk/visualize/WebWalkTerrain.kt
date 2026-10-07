@@ -1,4 +1,4 @@
-package api.bot.webwalk
+package api.bot.webwalk.visualize
 
 import io.luna.game.cache.Archive
 import io.luna.game.cache.Cache

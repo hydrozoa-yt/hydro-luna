@@ -1,12 +1,17 @@
-package api.bot.webwalk
+package api.bot.webwalk.data
 
-import api.bot.webwalk.WebWalkLoader.FAIRY_RINGS
-import api.bot.webwalk.WebWalkLoader.HUBS
-import api.bot.webwalk.WebWalkLoader.HUBS_MANUAL
-import api.bot.webwalk.WebWalkLoader.OBSTACLES
-import api.bot.webwalk.WebWalkLoader.OBSTACLE_OVERRIDES
-import api.bot.webwalk.WebWalkLoader.SHIPS
-import api.bot.webwalk.WebWalkLoader.TELEPORTS
+import api.bot.webwalk.data.WebWalkLoader.FAIRY_RINGS
+import api.bot.webwalk.data.WebWalkLoader.HUBS
+import api.bot.webwalk.data.WebWalkLoader.HUBS_MANUAL
+import api.bot.webwalk.data.WebWalkLoader.OBSTACLES
+import api.bot.webwalk.data.WebWalkLoader.OBSTACLE_OVERRIDES
+import api.bot.webwalk.data.WebWalkLoader.SHIPS
+import api.bot.webwalk.data.WebWalkLoader.TELEPORTS
+import api.bot.webwalk.generate.ScatterHubs
+import api.bot.webwalk.model.EdgeAction
+import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.ItemRequirement
+import api.bot.webwalk.model.NodeKind
 import io.luna.game.model.Position
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -331,5 +336,37 @@ class WebWalkLoaderTest {
         for (town in listOf("zone_varrock", "zone_falador", "zone_draynor", "zone_edgeville", "zone_burthorpe")) {
             assertTrue(town in reached, "$town can't be reached from Lumbridge.")
         }
+    }
+
+    @Test
+    fun shippedScatterHubsAreConnectedAndCloseTogether() {
+        val graph = WebWalkLoader.load(Path.of("data/game/bots/webwalk"))
+        val scatter = graph.nodes.values.filter { ScatterHubs.TAG in it.tags }
+        assertTrue(scatter.size > 1000, "Only ${scatter.size} scattered hubs.")
+
+        // Every scattered hub is walkable to one that is close, which is within the range of the route pathfinder.
+        val lonely = scatter.filter { node -> graph.edgesFrom(node.id).none { it.type == EdgeType.WALK } }
+        assertTrue(lonely.isEmpty(), "Scattered hubs without a walk: ${lonely.take(5).map { it.id }}")
+        for (node in scatter) {
+            val nearest = graph.edgesFrom(node.id).filter { it.type == EdgeType.WALK }
+                .minOf { graph.node(it.to)!!.position.computeLongestDistance(node.position) }
+            assertTrue(nearest <= 56, "${node.id} is $nearest tiles from its nearest neighbour.")
+        }
+
+        // Walking, climbing and opening doors from the start of the game reaches most of the mainland. Places behind crossings
+        // that aren't doors yet, such as ships, the Shantay Pass and Mort Myre, are not reached until those are added.
+        val reached = HashSet<String>()
+        val queue = ArrayDeque<String>()
+        queue += "zone_lumbridge"
+        reached += "zone_lumbridge"
+        while (queue.isNotEmpty()) {
+            for (edge in graph.edgesFrom(queue.removeFirst())) {
+                if (reached.add(edge.to)) {
+                    queue += edge.to
+                }
+            }
+        }
+        val reachable = scatter.count { it.id in reached }
+        assertTrue(reachable > 500, "Only $reachable scattered hubs can be reached from Lumbridge.")
     }
 }

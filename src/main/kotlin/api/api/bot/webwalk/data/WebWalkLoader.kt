@@ -1,5 +1,16 @@
-package api.bot.webwalk
+package api.bot.webwalk.data
 
+import api.bot.webwalk.model.EdgeAction
+import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.FairyRing
+import api.bot.webwalk.model.ItemRequirement
+import api.bot.webwalk.model.NodeKind
+import api.bot.webwalk.model.Requirements
+import api.bot.webwalk.model.TeleportDefinition
+import api.bot.webwalk.model.TeleportKind
+import api.bot.webwalk.model.WebWalkEdge
+import api.bot.webwalk.model.WebWalkGraph
+import api.bot.webwalk.model.WebWalkNode
 import io.luna.game.model.Position
 import io.luna.game.model.mob.Skill
 import org.apache.logging.log4j.LogManager

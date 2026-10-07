@@ -1,4 +1,4 @@
-package api.bot.webwalk
+package api.bot.webwalk.model
 
 import io.luna.game.model.Position
 
@@ -242,7 +242,7 @@ data class FairyRing(val id: String,
 /**
  * The immutable web-walker graph, which is safe to share between threads.
  *
- * Use [WebWalkLoader] to create one.
+ * Use [api.bot.webwalk.data.WebWalkLoader] to create one.
  *
  * @property teleports The teleports a bot may use.
  * @property fairyRings The fairy rings.

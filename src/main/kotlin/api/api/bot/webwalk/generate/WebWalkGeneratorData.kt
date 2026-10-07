@@ -1,5 +1,6 @@
-package api.bot.webwalk
+package api.bot.webwalk.generate
 
+import api.bot.webwalk.model.EdgeType
 import io.luna.game.model.Position
 import io.luna.game.model.`object`.ObjectDirection
 

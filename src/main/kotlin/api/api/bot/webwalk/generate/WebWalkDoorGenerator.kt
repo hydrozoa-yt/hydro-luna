@@ -1,5 +1,6 @@
-package api.bot.webwalk
+package api.bot.webwalk.generate
 
+import api.bot.webwalk.model.EdgeType
 import com.google.gson.JsonParser
 import io.luna.game.cache.Cache
 import io.luna.game.cache.codec.MapDecoder

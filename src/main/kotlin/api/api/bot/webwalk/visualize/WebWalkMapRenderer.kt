@@ -1,5 +1,9 @@
-package api.bot.webwalk
+package api.bot.webwalk.visualize
 
+import api.bot.webwalk.data.WebWalkLoader
+import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.NodeKind
+import api.bot.webwalk.model.WebWalkGraph
 import io.luna.game.cache.Cache
 import io.luna.game.cache.codec.MapDecoder
 import io.luna.game.cache.codec.ObjectDefinitionDecoder

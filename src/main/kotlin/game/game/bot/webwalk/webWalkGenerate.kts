@@ -1,6 +1,6 @@
 package game.bot.webwalk
 
-import api.bot.webwalk.WebWalkGenerationRunner
+import api.bot.webwalk.generate.WebWalkGenerationRunner
 import api.predef.*
 import api.predef.ext.*
 import io.luna.game.event.impl.ServerStateChangedEvent.ServerLaunchEvent

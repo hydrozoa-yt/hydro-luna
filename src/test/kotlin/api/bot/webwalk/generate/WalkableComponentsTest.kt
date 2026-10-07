@@ -1,5 +1,7 @@
-package api.bot.webwalk
+package api.bot.webwalk.generate
 
+import api.bot.webwalk.model.NodeKind
+import api.bot.webwalk.model.WebWalkNode
 import io.luna.game.model.Position
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test

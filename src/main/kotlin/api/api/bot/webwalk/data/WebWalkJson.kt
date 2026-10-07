@@ -1,4 +1,4 @@
-package api.bot.webwalk
+package api.bot.webwalk.data
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
