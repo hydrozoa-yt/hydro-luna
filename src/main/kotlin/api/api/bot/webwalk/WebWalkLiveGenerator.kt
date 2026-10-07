@@ -20,8 +20,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Makes `climbs.json` and `hubs.json`, which need a running world.
+ * Makes the generated files of the web-walker: `obstacles.json`, `climbs.json` and `hubs.json`. Everything is made in a
+ * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world.
  *
+ * - The closed doors, gates and curtains of `obstacles.json` are made by [WebWalkDoorGenerator] from the map data of the
+ *   cache.
  * - The ladders, stairs and trapdoors of `climbs.json` land where [LadderDestination], [StairDestination] and
  *   [Trapdoor] say that they do, which is what players get.
  * - The hubs of `hubs.json` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
@@ -31,8 +34,6 @@ import java.nio.file.Path
  *
  * It runs in two steps. [gather] needs the game thread, because it reads the world as it is. [finish] only reads the
  * collision snapshots, so it runs on a thread of its own, as it takes a while.
- *
- * `obstacles.json` is made without a world by [WebWalkDoorGenerator], and it is never changed here.
  *
  * @author Hydrozoa
  */
@@ -75,10 +76,11 @@ object WebWalkLiveGenerator {
     /**
      * The text of the generated files.
      *
+     * @property obstacles The text of `obstacles.json`.
      * @property climbs The text of `climbs.json`.
      * @property hubs The text of `hubs.json`.
      */
-    class Output(val climbs: String, val hubs: String)
+    class Output(val obstacles: String, val climbs: String, val hubs: String)
 
     /**
      * Reads the world. Must be called on the game thread.
@@ -264,6 +266,10 @@ object WebWalkLiveGenerator {
                 sources[file] = Files.readString(path)
             }
         }
+        val doors = WebWalkDoorGenerator.generate(Path.of("data", "game", "world", "doors"), ctx.cache.mapIndexTable)
+        doors.report.counts.forEach { (what, amount) -> gathered.report.count(what, amount) }
+        gathered.report.skipped += doors.report.skipped
+        sources[WebWalkLoader.OBSTACLES] = doors.obstacles
         val climbsText = WebWalkWriter.obstacles(gathered.climbs)
         sources[WebWalkLoader.CLIMBS] = climbsText
         sources[WebWalkLoader.HUBS] = WebWalkWriter.hubs(gathered.hubs, emptyList())
@@ -292,7 +298,7 @@ object WebWalkLiveGenerator {
         }).link(nodes) { componentById.getValue(it.id) }
         gathered.report.count("nodes", graph.nodes.size)
         gathered.report.count("walk links", links.size)
-        return Output(climbsText, WebWalkWriter.hubs(gathered.hubs, links))
+        return Output(doors.obstacles, climbsText, WebWalkWriter.hubs(gathered.hubs, links))
     }
 
     /**
@@ -316,6 +322,7 @@ object WebWalkLiveGenerator {
      */
     fun write(output: Output, directory: Path) {
         Files.createDirectories(directory)
+        Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), output.obstacles)
         Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), output.climbs)
         Files.writeString(directory.resolve(WebWalkLoader.HUBS), output.hubs)
     }
@@ -328,7 +335,9 @@ object WebWalkLiveGenerator {
      * @return The names of the files that are different or missing.
      */
     fun outOfDate(output: Output, directory: Path): List<String> {
-        val expected = mapOf(WebWalkLoader.CLIMBS to output.climbs, WebWalkLoader.HUBS to output.hubs)
+        val expected = mapOf(WebWalkLoader.OBSTACLES to output.obstacles,
+                             WebWalkLoader.CLIMBS to output.climbs,
+                             WebWalkLoader.HUBS to output.hubs)
         val stale = ArrayList<String>()
         for ((file, text) in expected) {
             val path = directory.resolve(file)
@@ -363,7 +372,7 @@ object WebWalkLiveGenerator {
 }
 
 /**
- * Runs [WebWalkLiveGenerator] from a command or from the launch of the server.
+ * Runs [WebWalkLiveGenerator] once the server has launched, then exits the server. See the `generateWebWalk` Gradle task.
  *
  * @author Hydrozoa
  */
@@ -375,24 +384,19 @@ object WebWalkGenerationRunner {
     private val DIRECTORY = Path.of("data", "game", "bots", "webwalk")
 
     /**
-     * Gathers on the game thread (so this must be called from it), then finishes on a thread of its own.
+     * Gathers on the game thread (so this must be called from it), then finishes on a thread of its own. The server exits
+     * when it is done, with an exit code of `1` if anything went wrong.
      *
      * @param check `true` to only report the files that are out of date instead of writing them.
-     * @param exitWhenDone `true` to exit the server once finished, for generating from the command line.
-     * @param feedback Called with each line of what happened, on the game thread.
      */
-    fun run(check: Boolean, exitWhenDone: Boolean, feedback: (String) -> Unit) {
-        fun say(line: String) {
-            logger.info("[webwalk] {}", line)
-            gameService.submit { feedback(line) }
-        }
+    fun run(check: Boolean) {
+        fun say(line: String) = logger.info("[webwalk] {}", line)
 
         val gathered = try {
             WebWalkLiveGenerator.gather()
         } catch (e: Exception) {
             logger.error("Could not gather the web-walker data!", e)
-            say("Could not gather the data: $e")
-            if (exitWhenDone) System.exit(1)
+            System.exit(1)
             return
         }
         say("Gathered ${gathered.climbs.size} climbs and ${gathered.hubs.size} hubs. Linking, which takes a while...")
@@ -407,16 +411,14 @@ object WebWalkGenerationRunner {
                     say(if (stale.isEmpty()) "The generated files are up to date." else "Out of date: $stale")
                 } else {
                     WebWalkLiveGenerator.write(output, DIRECTORY)
-                    say("Wrote ${WebWalkLoader.CLIMBS} and ${WebWalkLoader.HUBS} to $DIRECTORY.")
+                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS} and ${WebWalkLoader.HUBS} to " +
+                                "$DIRECTORY.")
                 }
             } catch (e: Throwable) {
                 failed = true
                 logger.error("Could not generate the web-walker data!", e)
-                say("Could not generate the data: $e")
             }
-            if (exitWhenDone) {
-                System.exit(if (failed) 1 else 0)
-            }
+            System.exit(if (failed) 1 else 0)
         }, "WebWalkGeneratorThread").start()
     }
 }

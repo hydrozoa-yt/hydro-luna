@@ -106,7 +106,7 @@ class WebWalkDoorGeneratorTest {
         val result = WebWalkDoorGenerator.generate(doors, map)
 
         assertEquals(Files.readString(committed).replace("\r\n", "\n"), result.obstacles,
-                     "obstacles.json is out of date: run './gradlew generateWebWalkDoors'.")
+                     "obstacles.json is out of date: run './gradlew generateWebWalk'.")
     }
 
     @Test

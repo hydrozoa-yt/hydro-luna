@@ -13,8 +13,8 @@ import java.nio.file.Path
  * Makes `obstacles.json`, which holds every closed door, gate and curtain of the world.
  *
  * The doors come from the ids in `data/game/world/doors/` that are found in the map data of the cache. This needs no
- * running server, so it also runs as a test to make sure that the committed file is still up to date, and from
- * the `generateWebWalkDoors` Gradle task to write it.
+ * running world, so a test can run it against the cache to make sure that the committed file is still up to date. The
+ * `generateWebWalk` Gradle task runs it with the rest of the generation, see [WebWalkLiveGenerator].
  *
  * Only closed doors are listed, because open ones can be walked through. Only straight walls are listed, because those
  * are the only ones that [game.obj.doors.Doors] swings as gates and double doors. Diagonal doors, and doors that are not
@@ -139,22 +139,6 @@ object WebWalkDoorGenerator {
     fun generate(doorDirectory: Path, table: MapIndexTable): Result {
         val (obstacles, report) = generate(table, readClosedIds(doorDirectory))
         return Result(WebWalkWriter.obstacles(obstacles), report)
-    }
-
-    /**
-     * Writes `obstacles.json`. Run by the `generateWebWalkDoors` Gradle task from the root of the project.
-     *
-     * @param args Optionally the directory to write to, which is `data/game/bots/webwalk` by default.
-     */
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val output = Path.of(args.firstOrNull() ?: "data/game/bots/webwalk")
-        val result = generate(Path.of("data/game/world/doors"), loadMap())
-        Files.createDirectories(output)
-        Files.writeString(output.resolve(WebWalkLoader.OBSTACLES), result.obstacles)
-        result.report.summary().forEach { println(it) }
-        println("Wrote ${output.resolve(WebWalkLoader.OBSTACLES)}")
-        System.exit(0)
     }
 
     /**
