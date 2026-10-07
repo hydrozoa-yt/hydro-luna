@@ -1,11 +1,11 @@
 package api.bot.webwalk
 
-import io.luna.game.cache.Archive
 import io.luna.game.cache.Cache
 import io.luna.game.cache.codec.MapDecoder
+import io.luna.game.cache.codec.ObjectDefinitionDecoder
 import io.luna.game.cache.map.MapIndexTable
-import io.luna.game.cache.map.MapTile
 import io.luna.game.model.Position
+import io.luna.game.model.def.GameObjectDefinition
 import io.luna.game.model.`object`.ObjectDirection
 import io.luna.game.model.`object`.ObjectType
 import java.awt.BasicStroke
@@ -13,7 +13,6 @@ import java.awt.Color
 import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import java.awt.image.DataBufferInt
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
@@ -26,7 +25,7 @@ import kotlin.math.sin
 /**
  * Draws the web-walker graph over the terrain of the cache as a PNG, to get a quick idea of what the web looks like.
  *
- * Every tile is painted with the colour of its floor (or blue for water), darkened where it can't be walked on. Nodes are
+ * The terrain is painted like the client does, see [WebWalkTerrain], with the walls over it. Nodes are
  * drawn as dots and edges as lines, with a colour for each [EdgeType] and [NodeKind], and a legend in the corner. An edge
  * that has only one end on the drawn plane, like a ladder, is drawn as a ring on that end. One-way edges get an arrowhead.
  *
@@ -93,74 +92,44 @@ object WebWalkMapRenderer {
     /**
      * The colour of walls.
      */
-    private val WALL = Color(240, 240, 240)
+    private val WALL = Color.WHITE
 
     /**
-     * The colour of water.
+     * The colour of trees, of dead trees and of the outline of both.
      */
-    private const val WATER = 0x2a4f9e
+    private val TREE = Color(46, 125, 50)
+    private val DEAD_TREE = Color(121, 85, 72)
+    private val TREE_OUTLINE = Color(15, 60, 20)
 
     /**
-     * The colour of a floor that the cache gives none for.
+     * The names of objects that are trees, which are the common trees, the ones named for their wood, and palms.
      */
-    private const val UNKNOWN_FLOOR = 0x6b5b3a
+    private val TREE_NAME = Regex("\\b(tree|oak|willow|yew|palm)\\b")
 
     /**
-     * The colour that the cache uses for a floor that has no colour of its own, because it has a texture.
+     * The names that look like a tree but are not one that is standing.
      */
-    private const val NO_COLOR = 0xff00ff
+    private val NOT_TREE_NAME = Regex("stump|door|patch|branch|fallen|hollow")
 
     /**
-     * Reads the colour of every floor, which are indexed by their id minus one, as the overlays and underlays of the map data
-     * are.
-     *
-     * @param cache An open cache.
-     * @return The colour of each floor, as `0xRRGGBB`.
+     * The names of trees that are dead.
      */
-    private fun readFloorColors(cache: Cache): IntArray {
-        val buf = Archive.decode(cache.getFile(0, 2)).getFileData("flo.dat")
-        try {
-            val colors = IntArray(buf.readUnsignedShort())
-            for (id in colors.indices) {
-                var rgb = UNKNOWN_FLOOR
-                while (true) {
-                    when (buf.readUnsignedByte().toInt()) {
-                        0 -> break
-                        1 -> rgb = buf.readUnsignedMedium()
-                        2 -> buf.readUnsignedByte()
-                        3 -> {}
-                        5 -> {}
-                        6 -> {
-                            while (buf.readByte().toInt() != 10) {
-                                // The name of the floor.
-                            }
-                        }
-                        7 -> buf.readUnsignedMedium()
-                        else -> {}
-                    }
-                }
-                colors[id] = if (rgb == NO_COLOR) UNKNOWN_FLOOR else rgb
-            }
-            return colors
-        } finally {
-            buf.release()
-        }
-    }
+    private val DEAD_TREE_NAME = Regex("dead|rotting")
 
     /**
      * Opens the cache and reads its map data and floor colours.
      *
-     * @return The map data, and the colour of each floor.
+     * @return The map data, and the floors.
      */
-    fun loadTerrain(): Pair<MapIndexTable, IntArray> {
+    fun loadTerrain(): Pair<MapIndexTable, List<WebWalkTerrain.Floor>> {
         val cache = Cache()
         cache.open()
         val floors = try {
-            readFloorColors(cache)
+            WebWalkTerrain.readFloors(cache)
         } catch (e: Exception) {
-            IntArray(0)
+            emptyList()
         }
-        cache.runDecoders(null, MapDecoder())
+        cache.runDecoders(null, ObjectDefinitionDecoder(), MapDecoder())
         cache.waitForDecoders()
         val table = cache.mapIndexTable
         cache.close()
@@ -171,20 +140,21 @@ object WebWalkMapRenderer {
      * Draws the graph.
      *
      * @param table The map data.
-     * @param floors The colour of each floor.
+     * @param floors The floors of the terrain.
      * @param graph The graph.
      * @param plane The plane to draw.
      * @param bounds The tiles to draw.
      * @param scale The number of pixels along the side of a tile.
      * @return The image, with north at the top.
      */
-    fun render(table: MapIndexTable, floors: IntArray, graph: WebWalkGraph, plane: Int, bounds: Bounds, scale: Int):
+    fun render(table: MapIndexTable, floors: List<WebWalkTerrain.Floor>, graph: WebWalkGraph, plane: Int, bounds: Bounds, scale: Int):
             BufferedImage {
         val image = BufferedImage(bounds.width * scale, bounds.height * scale, BufferedImage.TYPE_INT_RGB)
-        paintTerrain(image, table, floors, plane, bounds, scale)
+        WebWalkTerrain.paint(image, table, floors, plane, bounds, scale)
 
         val g = image.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        val trees = drawTrees(g, table, plane, bounds, scale)
         val walls = drawWalls(g, table, plane, bounds, scale)
         val centre = scale / 2.0
         fun px(p: Position) = (p.x - bounds.minX) * scale + centre
@@ -242,14 +212,64 @@ object WebWalkMapRenderer {
             g.fillOval((x - dot / 2).roundToInt(), (y - dot / 2).roundToInt(), dot.roundToInt(), dot.roundToInt())
         }
 
-        legend(g, plane, counts, kinds, walls)
+        legend(g, plane, counts, kinds, walls, trees)
         g.dispose()
         return image
     }
 
     /**
+     * The plane that an object of the map data is drawn on. Objects on a bridge are one plane up in the map data, like its
+     * floor.
+     */
+    private fun levelOf(table: MapIndexTable, pos: Position): Int {
+        val bridged = pos.z < 3 && table.getTile(Position(pos.x, pos.y, 1)).isBridge
+        return pos.z - (if (bridged) 1 else 0)
+    }
+
+    /**
+     * Draws the trees of the map data as ellipses over the tiles that they stand on. Trees are the objects that are named
+     * like one, which leaves out their stumps, patches and branches.
+     *
+     * @return The number of trees drawn.
+     */
+    private fun drawTrees(g: java.awt.Graphics2D, table: MapIndexTable, plane: Int, bounds: Bounds, scale: Int): Int {
+        var drawn = 0
+        val inset = max(1, scale / 8)
+        for (obj in table.objectSet) {
+            if (obj.type != ObjectType.DEFAULT && obj.type != ObjectType.DIAGONAL_DEFAULT) {
+                continue
+            }
+            val pos = obj.position
+            val definition = GameObjectDefinition.ALL.get(obj.objectId).orElse(null) ?: continue
+            val name = definition.name?.lowercase() ?: continue
+            if (!TREE_NAME.containsMatchIn(name) || NOT_TREE_NAME.containsMatchIn(name)) {
+                continue
+            }
+            // The footprint is turned for objects that face north or south, like the collision of the object is.
+            val turned = obj.rotation == ObjectDirection.NORTH || obj.rotation == ObjectDirection.SOUTH
+            val sizeX = if (turned) definition.sizeY else definition.sizeX
+            val sizeY = if (turned) definition.sizeX else definition.sizeY
+            if (pos.x > bounds.maxX || pos.x + sizeX <= bounds.minX || pos.y > bounds.maxY || pos.y + sizeY <= bounds.minY ||
+                !table.indexTable.containsKey(pos.region) || levelOf(table, pos) != plane) {
+                continue
+            }
+            val x = (pos.x - bounds.minX) * scale + inset
+            val y = (bounds.maxY - (pos.y + sizeY - 1)) * scale + inset
+            val width = sizeX * scale - inset * 2
+            val height = sizeY * scale - inset * 2
+            g.color = if (DEAD_TREE_NAME.containsMatchIn(name)) DEAD_TREE else TREE
+            g.fillOval(x, y, width, height)
+            g.color = TREE_OUTLINE
+            g.drawOval(x, y, width, height)
+            drawn++
+        }
+        return drawn
+    }
+
+    /**
      * Draws the walls of the map data along the edges of the tiles that they stand on. A straight wall is one edge, a wall
-     * corner is two, and diagonal walls are drawn across the tile.
+     * corner is two, and diagonal walls are drawn across the tile. The pieces that only block one corner of a tile
+     * (diagonal and rectangle corner walls) are left out, because they sit on joints that the other walls cover.
      *
      * @return The number of walls drawn.
      */
@@ -259,17 +279,14 @@ object WebWalkMapRenderer {
         var drawn = 0
         for (obj in table.objectSet) {
             val type = obj.type
-            if (type != ObjectType.STRAIGHT_WALL && type != ObjectType.WALL_CORNER &&
-                type != ObjectType.DIAGONAL_CORNER_WALL && type != ObjectType.DIAGONAL_WALL) {
+            if (type != ObjectType.STRAIGHT_WALL && type != ObjectType.WALL_CORNER && type != ObjectType.DIAGONAL_WALL) {
                 continue
             }
             val pos = obj.position
             if (!bounds.contains(pos) || !table.indexTable.containsKey(pos.region)) {
                 continue
             }
-            // Walls on a bridge are one plane up in the map data, like its floor.
-            val bridged = pos.z < 3 && table.getTile(Position(pos.x, pos.y, 1)).isBridge
-            if (pos.z - (if (bridged) 1 else 0) != plane) {
+            if (levelOf(table, pos) != plane) {
                 continue
             }
             val left = (pos.x - bounds.minX) * scale
@@ -294,73 +311,13 @@ object WebWalkMapRenderer {
                     edge(rotation)
                     edge(rotation + 1)
                 }
-                ObjectType.DIAGONAL_CORNER_WALL ->
-                    // Cuts across the corner that the edges 'rotation' and 'rotation + 1' meet at.
-                    when (rotation) {
-                        0 -> g.drawLine(left, (top + bottom) / 2, (left + right) / 2, top)
-                        1 -> g.drawLine((left + right) / 2, top, right, (top + bottom) / 2)
-                        2 -> g.drawLine(right, (top + bottom) / 2, (left + right) / 2, bottom)
-                        else -> g.drawLine((left + right) / 2, bottom, left, (top + bottom) / 2)
-                    }
                 else ->
-                    if (rotation % 2 == 0) g.drawLine(left, top, right, bottom) else g.drawLine(left, bottom, right, top)
+                    // Diagonal walls run corner to corner: west and east like a '/', north and south like a '\'.
+                    if (rotation % 2 == 0) g.drawLine(left, bottom, right, top) else g.drawLine(left, top, right, bottom)
             }
             drawn++
         }
         return drawn
-    }
-
-    /**
-     * Paints the floor of every tile.
-     */
-    private fun paintTerrain(image: BufferedImage, table: MapIndexTable, floors: IntArray, plane: Int, bounds: Bounds,
-                             scale: Int) {
-        val pixels = (image.raster.dataBuffer as DataBufferInt).data
-        val width = image.width
-        for (region in table.allRegions) {
-            val origin = region.absPosition
-            if (origin.x + 63 < bounds.minX || origin.x > bounds.maxX || origin.y + 63 < bounds.minY || origin.y > bounds.maxY) {
-                continue
-            }
-            val grid = table.tileSet.getGrid(table.indexTable[region])
-            for (dx in 0 until 64) {
-                for (dy in 0 until 64) {
-                    val x = origin.x + dx
-                    val y = origin.y + dy
-                    if (x !in bounds.minX..bounds.maxX || y !in bounds.minY..bounds.maxY) {
-                        continue
-                    }
-                    // The floor of a bridge is on the plane above it in the map data.
-                    val bridged = plane < 3 && grid.getTile(dx, dy, plane + 1).isBridge
-                    val tile = grid.getTile(dx, dy, if (bridged) plane + 1 else plane)
-                    val colour = colourOf(tile, floors)
-                    val left = (x - bounds.minX) * scale
-                    val top = (bounds.maxY - y) * scale
-                    for (row in top until top + scale) {
-                        java.util.Arrays.fill(pixels, row * width + left, row * width + left + scale, colour)
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * The colour of one tile, which is dark where it can't be walked on and black where there is no floor.
-     */
-    private fun colourOf(tile: MapTile, floors: IntArray): Int {
-        if (tile.isWater) {
-            return WATER
-        }
-        val id = if (tile.overlay != 0) tile.overlay else tile.underlay
-        if (id == 0) {
-            return 0
-        }
-        val rgb = floors.getOrNull(id - 1) ?: UNKNOWN_FLOOR
-        val factor = if (tile.isBlocked) 0.45 else 0.8
-        val r = ((rgb shr 16 and 0xff) * factor).toInt()
-        val g = ((rgb shr 8 and 0xff) * factor).toInt()
-        val b = ((rgb and 0xff) * factor).toInt()
-        return (r shl 16) or (g shl 8) or b
     }
 
     /**
@@ -386,10 +343,10 @@ object WebWalkMapRenderer {
      * Draws the legend, with what is drawn and how many of each, in the top-left corner.
      */
     private fun legend(g: java.awt.Graphics2D, plane: Int, edges: Map<EdgeType, Int>, nodes: Map<NodeKind, Int>,
-                       walls: Int) {
+                       walls: Int, trees: Int) {
         val rows = EdgeType.entries.filter { it in edges }.map { Triple(EDGE_COLORS.getValue(it), "${it.name} edges", edges.getValue(it)) } +
                 NodeKind.entries.filter { it in nodes }.map { Triple(NODE_COLORS.getValue(it), "${it.name} nodes", nodes.getValue(it)) } +
-                Triple(WALL, "walls", walls)
+                Triple(WALL, "walls", walls) + Triple(TREE, "trees", trees)
         val font = Font(Font.SANS_SERIF, Font.BOLD, 18)
         g.font = font
         val line = 26
