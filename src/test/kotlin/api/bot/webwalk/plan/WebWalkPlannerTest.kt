@@ -383,4 +383,16 @@ class WebWalkPlannerTest {
         val millis = (System.nanoTime() - started) / 1_000_000
         assertTrue(millis < 2000, "Three trips took $millis ms.")
     }
+
+    @Test
+    fun tripsThatCostTheSameTakeTheFewestLegs() {
+        // The start is on a hub, so walking to it is free, and so is not bothering: both ways cost the same.
+        val teleports = """
+            [ { "id": "far_spell", "kind": "SPELL", "key": "FALADOR", "dest": [300, 100], "cost": 5 } ]
+        """
+        val planner = planner(graph(line, teleports = teleports))
+        val plan = planner.plan(pos(100, 100), pos(300, 102), CapabilitySnapshot(usableTeleports = setOf("far_spell")))!!
+
+        assertEquals(EdgeType.TELEPORT, plan.legs.first().type, "Walked before teleporting: $plan")
+    }
 }

@@ -3,12 +3,17 @@ package api.bot.webwalk.walk
 import api.bot.Suspendable.waitFor
 import api.bot.action.BotActionHandler
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.TeleportKind
 import api.bot.webwalk.plan.PlanLeg
+import api.bot.webwalk.plan.TeleportAvailability
 import api.bot.webwalk.plan.WebWalkPlan
 import api.predef.*
 import api.predef.ext.*
 import engine.obj.Trapdoor
+import game.item.degradable.jewellery.TeleportJewellery
+import game.skill.magic.teleportSpells.TeleportSpell
 import io.luna.game.model.Position
+import io.luna.game.model.item.Item
 import io.luna.game.model.mob.bot.Bot
 import io.luna.game.model.mob.dialogue.OptionDialogue
 import io.luna.game.model.mob.movement.NavigationResult
@@ -28,7 +33,8 @@ import kotlin.time.Duration.Companion.seconds
  * - Ladders and stairs are climbed with the option that the plan says, and when that is "Climb" the bot also chooses up or
  *   down in the dialogue that asks.
  * - Trapdoors are opened if they are closed, then climbed down.
- * - Teleports, ships and fairy rings are not supported yet, so a plan with one of those fails when it gets to it.
+ * - Teleports are cast, rubbed or typed as a player would. Ships and fairy rings are not supported yet, so a plan with one
+ *   of those fails when it gets to it.
  *
  * Nothing is retried beyond a door that fails to open, and the walk stops at the first leg that fails. The bot is also done
  * as soon as it is within the radius of the destination, even if the plan has legs left.
@@ -115,6 +121,7 @@ class WebWalkExecutor(private val bot: Bot,
                 EdgeType.DOOR, EdgeType.GATE, EdgeType.CURTAIN -> crossDoor(leg)
                 EdgeType.LADDER, EdgeType.STAIR -> climb(leg)
                 EdgeType.TRAPDOOR -> climbTrapdoor(leg)
+                EdgeType.TELEPORT -> teleport(leg)
                 else -> "${leg.type} legs are not supported yet"
             }
             if (failure != null) {
@@ -266,6 +273,58 @@ class WebWalkExecutor(private val bot: Bot,
         }
         return if (awaitArrival(leg)) null else
             "the bot did not arrive near ${leg.to}, it is at ${bot.position}"
+    }
+
+    /**
+     * Teleports the bot, by casting a spell, using a piece of jewellery, or going home.
+     *
+     * The teleport spells and jewellery are taken from the game, and so are the ways that they are used: a spell is cast by
+     * clicking its button, jewellery is rubbed and a destination is chosen from the dialogue that it opens, and going home
+     * is the `home` command. The jewellery is taken out of the equipment into the inventory if it is worn, as it is only
+     * rubbed from there.
+     *
+     * @return `null` if the bot arrived, or why it didn't.
+     */
+    private suspend fun teleport(leg: PlanLeg): String? {
+        val teleport = leg.teleport ?: return "the leg has no teleport"
+        when (teleport.kind) {
+            TeleportKind.SPELL -> {
+                val spell = TeleportSpell.entries.firstOrNull { it.name == teleport.key }
+                    ?: return "there is no spell '${teleport.key}'"
+                bot.output.clickButton(spell.button)
+            }
+
+            TeleportKind.HOME -> bot.output.sendCommand("home")
+            TeleportKind.JEWELLERY -> {
+                val failure = useJewellery(teleport.key, teleport.option)
+                if (failure != null) {
+                    return failure
+                }
+            }
+        }
+        return if (awaitArrival(leg)) null else
+            "the teleport ${teleport.id} did not take the bot near ${leg.to}, it is at ${bot.position}"
+    }
+
+    /**
+     * Rubs a piece of teleport jewellery and chooses a destination.
+     *
+     * @param key The name of the jewellery.
+     * @param option The number of the destination, from 1.
+     * @return `null` if the destination was chosen, or why it wasn't.
+     */
+    private suspend fun useJewellery(key: String?, option: Int?): String? {
+        val jewellery = TeleportJewellery.entries.firstOrNull { it.name == key } ?: return "there is no jewellery '$key'"
+        val choice = option ?: return "the teleport has no destination option"
+        val item = handler.retrieveAny(TeleportAvailability.chargedIds(jewellery).map { Item(it) })
+            ?: return "the bot has no ${jewellery.name.lowercase()} with a charge"
+        if (!handler.inventory.clickItem(4, item.id)) {
+            return "could not rub ${item.name}"
+        }
+        if (!waitFor(ACTION_TIMEOUT) { OptionDialogue::class in bot.overlays }) {
+            return "the destinations of ${item.name} were not shown"
+        }
+        return if (handler.widgets.clickDialogueOption(choice)) null else "could not choose destination $choice"
     }
 
     /**

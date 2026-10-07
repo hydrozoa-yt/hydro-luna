@@ -1,6 +1,7 @@
 package api.bot.webwalk.generate
 
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.TeleportKind
 import io.luna.game.model.Position
 import io.luna.game.model.`object`.ObjectDirection
 
@@ -56,6 +57,27 @@ data class GeneratedHub(val id: String, val pos: Position, val tags: Set<String>
  * @author Hydrozoa
  */
 data class GeneratedLink(val from: String, val to: String, val cost: Int)
+
+/**
+ * A teleport of `teleports.json` made by the generator.
+ *
+ * @property id The id of the teleport.
+ * @property kind How the teleport is used.
+ * @property key The name of the spell or jewellery, or `null` for the home teleport.
+ * @property option The number of the destination in the dialogue of the jewellery, from 1, or `null` if it isn't jewellery.
+ * @property dest Where the teleport arrives.
+ * @property cost The time the teleport takes, in game ticks.
+ * @property maxWilderness The deepest wilderness level it can be used from, or `null` for no limit.
+ *
+ * @author Hydrozoa
+ */
+data class GeneratedTeleport(val id: String,
+                             val kind: TeleportKind,
+                             val key: String?,
+                             val option: Int?,
+                             val dest: Position,
+                             val cost: Int,
+                             val maxWilderness: Int? = null)
 
 /**
  * What the generator did, for people to read.
@@ -221,6 +243,21 @@ object WebWalkWriter {
             val option = entry.option?.let { ", \"option\": ${quote(it)}" } ?: ""
             "{ \"type\": \"${entry.type}\", \"object\": ${entry.objectId}, \"pos\": ${position(entry.pos)}, " +
                     "\"from\": ${position(entry.from)}, \"to\": ${position(entry.to)}$option }"
+        }, "[", "]")
+    }
+
+    /**
+     * Writes `teleports.json`.
+     */
+    fun teleports(teleports: Collection<GeneratedTeleport>): String {
+        return lines(teleports.sortedBy { it.id }.map { teleport ->
+            val key = teleport.key?.let { ", \"key\": ${quote(it)}" } ?: ""
+            val option = teleport.option?.let { ", \"option\": $it" } ?: ""
+            val limits = ArrayList<String>()
+            teleport.maxWilderness?.let { limits += "\"maxWilderness\": $it" }
+            val requirements = if (limits.isEmpty()) "" else ", \"requirements\": { ${limits.joinToString(", ")} }"
+            "{ \"id\": ${quote(teleport.id)}, \"kind\": \"${teleport.kind}\"$key$option, \"dest\": ${position(teleport.dest)}, " +
+                    "\"cost\": ${teleport.cost}$requirements }"
         }, "[", "]")
     }
 

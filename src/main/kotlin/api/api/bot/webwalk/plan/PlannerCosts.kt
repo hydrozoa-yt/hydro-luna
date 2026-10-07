@@ -24,6 +24,8 @@ package api.bot.webwalk.plan
  * @property jitter How much the cost of each edge may be changed, as a fraction, when trying other trips.
  * @property toleranceFraction How much more than the best trip a bot may take, as a fraction, at the lowest intelligence.
  * @property toleranceMinimum The least ticks that a bot may take more than the best trip, at the lowest intelligence.
+ * @property legPenalty A tiny cost for each leg that is only used to choose between trips that cost the same, so that the one
+ * with fewer legs wins. It is not part of the cost that a trip is reported to have.
  *
  * @author Hydrozoa
  */
@@ -43,4 +45,5 @@ data class PlannerCosts(val doorTicks: Double = 3.0,
                         val alternatives: Int = 8,
                         val jitter: Double = 0.3,
                         val toleranceFraction: Double = 0.2,
-                        val toleranceMinimum: Double = 8.0)
+                        val toleranceMinimum: Double = 8.0,
+                        val legPenalty: Double = 0.01)

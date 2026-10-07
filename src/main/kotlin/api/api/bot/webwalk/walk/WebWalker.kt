@@ -1,6 +1,7 @@
 package api.bot.webwalk.walk
 
 import api.bot.webwalk.data.WebWalkLoader
+import api.bot.webwalk.model.WebWalkGraph
 import api.bot.webwalk.plan.BotCapabilities
 import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.webwalk.plan.WebWalkPlan
@@ -27,11 +28,16 @@ object WebWalker {
     private val DIRECTORY = Path.of("data", "game", "bots", "webwalk")
 
     /**
-     * The planner, which is made the first time that it is needed. It reads the files of the web and the collision of the
-     * world, and is shared by all bots.
+     * The web, which is read the first time that it is needed and is shared by all bots.
+     */
+    private val graph: WebWalkGraph by lazy { WebWalkLoader.load(DIRECTORY) }
+
+    /**
+     * The planner, which is made the first time that it is needed. It reads the web and the collision of the world, and is
+     * shared by all bots.
      */
     private val planner: WebWalkPlanner by lazy {
-        WebWalkPlanner(WebWalkLoader.load(DIRECTORY), PathfinderWalkEstimator(world.collisionManager))
+        WebWalkPlanner(graph, PathfinderWalkEstimator(world.collisionManager))
     }
 
     /**
@@ -43,7 +49,8 @@ object WebWalker {
      * @return The trip, or `null` if the bot can't get there.
      */
     fun plan(bot: Bot, destination: Position, random: Random = Random()): WebWalkPlan? =
-        planner.plan(bot.position, destination, BotCapabilities.snapshot(bot), bot.personality.intelligence, random)
+        planner.plan(bot.position, destination, BotCapabilities.snapshot(bot, graph.teleports), bot.personality.intelligence,
+                     random)
 
     /**
      * Walks a bot to a destination. Must be called from a bot script, on the game thread.

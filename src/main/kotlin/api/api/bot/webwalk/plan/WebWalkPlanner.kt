@@ -234,7 +234,7 @@ class WebWalkPlanner(private val graph: WebWalkGraph,
         fun relax(from: Int, to: Int, leg: PlanLeg, key: Int) {
             val jitter = if (seed == null) 1.0 else
                 1.0 + costs.jitter * SplittableRandom(seed + key * -0x61c8864680b583ebL).nextDouble()
-            val total = dist[from] + leg.cost * jitter
+            val total = dist[from] + leg.cost * jitter + costs.legPenalty
             if (total < dist[to]) {
                 dist[to] = total
                 previous[to] = from

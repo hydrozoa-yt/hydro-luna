@@ -3,10 +3,14 @@ package api.bot.webwalk.generate
 import api.bot.webwalk.data.WebWalkDataException
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.TeleportKind
 import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.zone.SubZone
 import api.bot.zone.Zone
 import api.predef.*
+import game.item.degradable.jewellery.TeleportJewellery
+import game.skill.magic.teleportSpells.TeleportSpell
+import io.luna.Luna
 import engine.obj.LadderDestination
 import engine.obj.LadderType
 import engine.obj.StairDestination
@@ -20,13 +24,15 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Makes the generated files of the web-walker: `obstacles.json`, `climbs.json` and `hubs.json`. Everything is made in a
+ * Makes the generated files of the web-walker: `obstacles.json`, `climbs.json`, `teleports.json` and `hubs.json`. Everything is made in a
  * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world.
  *
  * - The closed doors, gates and curtains of `obstacles.json` are made by [WebWalkDoorGenerator] from the map data of the
  *   cache.
  * - The ladders, stairs and trapdoors of `climbs.json` land where [LadderDestination], [StairDestination] and
  *   [Trapdoor] say that they do, which is what players get.
+ * - The teleports of `teleports.json` are the teleport spells, the destinations of the teleport jewellery, and the home
+ *   teleport, so that they are never written out by hand.
  * - The hubs of `hubs.json` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
  *   on.
  * - The walk edges of `hubs.json` link every node of the graph (the ones from the files that are not generated here too)
@@ -73,6 +79,26 @@ object WebWalkLiveGenerator {
     private const val NEAR_LINK_RADIUS = 56
 
     /**
+     * The time of a teleport spell, in ticks: the cast is five ticks long (see `Magic.regularStyle`).
+     */
+    private const val SPELL_TICKS = 5
+
+    /**
+     * The time of a teleport by jewellery, in ticks: the same cast, and a tick to rub the jewellery and choose where to go.
+     */
+    private const val JEWELLERY_TICKS = 7
+
+    /**
+     * The time of the home teleport, in ticks.
+     */
+    private const val HOME_TICKS = 7
+
+    /**
+     * The deepest wilderness level that teleports can be used from. The game does not allow them above level 20.
+     */
+    private const val TELEPORT_MAX_WILDERNESS = 20
+
+    /**
      * How many times a climb is made to find the lowest tile it arrives at, enough to find every tile of a small area.
      */
     private const val LANDING_SAMPLES = 200
@@ -87,18 +113,23 @@ object WebWalkLiveGenerator {
      *
      * @property climbs The ladders, stairs and trapdoors.
      * @property hubs The hubs.
+     * @property teleports The teleports.
      * @property report What was made and what was left out.
      */
-    class Gathered(val climbs: List<GeneratedObstacle>, val hubs: List<GeneratedHub>, val report: GenerationReport)
+    class Gathered(val climbs: List<GeneratedObstacle>,
+                   val hubs: List<GeneratedHub>,
+                   val teleports: List<GeneratedTeleport>,
+                   val report: GenerationReport)
 
     /**
      * The text of the generated files.
      *
      * @property obstacles The text of `obstacles.json`.
      * @property climbs The text of `climbs.json`.
+     * @property teleports The text of `teleports.json`.
      * @property hubs The text of `hubs.json`.
      */
-    class Output(val obstacles: String, val climbs: String, val hubs: String)
+    class Output(val obstacles: String, val climbs: String, val teleports: String, val hubs: String)
 
     /**
      * Reads the world. Must be called on the game thread.
@@ -124,7 +155,36 @@ object WebWalkLiveGenerator {
         }
         report.count("climbs", climbs.size)
         val hubs = hubs(report)
-        return Gathered(climbs, hubs + scatter(hubs, report), report)
+        return Gathered(climbs, hubs + scatter(hubs, report), teleports(report), report)
+    }
+
+    /**
+     * Makes the teleports: a spell for each of the teleport spells, an option for each destination of the teleport
+     * jewellery, and the home teleport. Each lands on the nearest tile that can be stood on to its destination, and none can
+     * be used from deep in the wilderness. Must be called on the game thread.
+     */
+    private fun teleports(report: GenerationReport): List<GeneratedTeleport> {
+        val teleports = ArrayList<GeneratedTeleport>()
+        fun add(id: String, kind: TeleportKind, key: String?, option: Int?, destination: Position, cost: Int) {
+            val dest = standableNear(destination)
+            if (dest == null) {
+                report.skipped += "teleport $id to ${DoorObstacles.describe(destination)}: no tile to stand on nearby"
+                return
+            }
+            teleports += GeneratedTeleport(id, kind, key, option, dest, cost, TELEPORT_MAX_WILDERNESS)
+        }
+        for (spell in TeleportSpell.entries) {
+            add("spell_${spell.name.lowercase()}", TeleportKind.SPELL, spell.name, null, spell.destination, SPELL_TICKS)
+        }
+        for (jewellery in TeleportJewellery.entries) {
+            jewellery.destinations.forEachIndexed { index, (_, destination) ->
+                add("jewellery_${jewellery.name.lowercase()}_${index + 1}", TeleportKind.JEWELLERY, jewellery.name,
+                    index + 1, destination, JEWELLERY_TICKS)
+            }
+        }
+        add("home", TeleportKind.HOME, null, null, Luna.settings().game().startingPosition(), HOME_TICKS)
+        report.count("teleports", teleports.size)
+        return teleports
     }
 
     /**
@@ -312,6 +372,8 @@ object WebWalkLiveGenerator {
         sources[WebWalkLoader.OBSTACLES] = doors.obstacles
         val climbsText = WebWalkWriter.obstacles(gathered.climbs)
         sources[WebWalkLoader.CLIMBS] = climbsText
+        val teleportsText = WebWalkWriter.teleports(gathered.teleports)
+        sources[WebWalkLoader.TELEPORTS] = teleportsText
         sources[WebWalkLoader.HUBS] = WebWalkWriter.hubs(gathered.hubs, emptyList())
 
         val graph = WebWalkLoader.fromSources(sources)
@@ -365,7 +427,7 @@ object WebWalkLiveGenerator {
         val hubs = gathered.hubs.filter { it.id in keptIds }
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
-        return Output(doors.obstacles, climbsText, WebWalkWriter.hubs(hubs, links))
+        return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.hubs(hubs, links))
     }
 
     /**
@@ -378,6 +440,7 @@ object WebWalkLiveGenerator {
         Files.createDirectories(directory)
         Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), output.obstacles)
         Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), output.climbs)
+        Files.writeString(directory.resolve(WebWalkLoader.TELEPORTS), output.teleports)
         Files.writeString(directory.resolve(WebWalkLoader.HUBS), output.hubs)
     }
 
@@ -391,6 +454,7 @@ object WebWalkLiveGenerator {
     fun outOfDate(output: Output, directory: Path): List<String> {
         val expected = mapOf(WebWalkLoader.OBSTACLES to output.obstacles,
                              WebWalkLoader.CLIMBS to output.climbs,
+                             WebWalkLoader.TELEPORTS to output.teleports,
                              WebWalkLoader.HUBS to output.hubs)
         val stale = ArrayList<String>()
         for ((file, text) in expected) {
@@ -465,7 +529,7 @@ object WebWalkGenerationRunner {
                     say(if (stale.isEmpty()) "The generated files are up to date." else "Out of date: $stale")
                 } else {
                     WebWalkLiveGenerator.write(output, DIRECTORY)
-                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS} and ${WebWalkLoader.HUBS} to " +
+                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS}, ${WebWalkLoader.TELEPORTS} and ${WebWalkLoader.HUBS} to " +
                                 "$DIRECTORY.")
                 }
             } catch (e: Throwable) {

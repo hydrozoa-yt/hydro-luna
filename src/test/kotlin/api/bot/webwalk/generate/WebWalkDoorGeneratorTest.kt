@@ -2,6 +2,7 @@ package api.bot.webwalk.generate
 
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.TeleportKind
 import io.luna.game.model.Position
 import io.luna.game.model.`object`.ObjectDirection
 import org.junit.jupiter.api.Assertions.*
@@ -122,5 +123,29 @@ class WebWalkDoorGeneratorTest {
         assertTrue(obstacles.any { it.type == EdgeType.GATE })
         assertTrue(obstacles.any { it.type == EdgeType.CURTAIN })
         assertTrue(obstacles.all { it.from.computeLongestDistance(it.to) == 1 })
+    }
+
+    @Test
+    fun teleportsAreWrittenAsALoadableFile() {
+        val text = WebWalkWriter.teleports(listOf(
+            GeneratedTeleport("spell_varrock", TeleportKind.SPELL, "VARROCK", null, Position(3212, 3423), 5, 20),
+            GeneratedTeleport("jewellery_glory_3", TeleportKind.JEWELLERY, "AMULET_OF_GLORY", 3, Position(3105, 3251), 7,
+                              20),
+            GeneratedTeleport("home", TeleportKind.HOME, null, null, Position(3182, 3440), 7)))
+        val graph = WebWalkLoader.fromSources(mapOf(WebWalkLoader.TELEPORTS to text))
+
+        assertEquals(setOf("spell_varrock", "jewellery_glory_3", "home"), graph.teleports.map { it.id }.toSet())
+        val spell = graph.teleports.first { it.id == "spell_varrock" }
+        assertEquals(TeleportKind.SPELL, spell.kind)
+        assertTrue(spell.requirements.skills.isEmpty())
+        assertEquals(20, spell.requirements.maxWilderness)
+        assertEquals(3, graph.teleports.first { it.id == "jewellery_glory_3" }.option)
+        assertTrue(graph.teleports.first { it.id == "home" }.requirements.isEmpty)
+        assertEquals("[]\n", WebWalkWriter.teleports(emptyList()))
+        // Written in order of id, so that generating again changes nothing.
+        assertEquals(text, WebWalkWriter.teleports(graph.teleports.reversed().map {
+            GeneratedTeleport(it.id, it.kind, it.key, it.option, it.destination, it.cost,
+                              it.requirements.maxWilderness)
+        }))
     }
 }
