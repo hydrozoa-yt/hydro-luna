@@ -126,6 +126,20 @@ class WebWalkDoorGeneratorTest {
     }
 
     @Test
+    fun doorsThatTheMapPlacesOpenAreListedAsClosed() {
+        assumeTrue(Files.exists(Path.of("data/game/cache/main_file_cache.dat")), "The cache is not available.")
+        val doors = WebWalkDoorGenerator.readDoors(Path.of("data/game/world/doors"))
+        val closed = doors.associate { it.closed to it.type }
+        val (onlyClosed, _) = WebWalkDoorGenerator.generate(map, closed)
+        val (withOpen, report) = WebWalkDoorGenerator.generate(map, closed, doors)
+
+        assertTrue(withOpen.size > onlyClosed.size, "No door was found open in the map.")
+        assertTrue(withOpen.containsAll(onlyClosed))
+        assertTrue(withOpen.all { it.objectId in closed && it.from.computeLongestDistance(it.to) == 1 })
+        assertTrue(report.skipped.none { it.contains("listed twice") }, report.skipped.toString())
+    }
+
+    @Test
     fun teleportsAreWrittenAsALoadableFile() {
         val text = WebWalkWriter.teleports(listOf(
             GeneratedTeleport("spell_varrock", TeleportKind.SPELL, "VARROCK", null, Position(3212, 3423), 5, 20),

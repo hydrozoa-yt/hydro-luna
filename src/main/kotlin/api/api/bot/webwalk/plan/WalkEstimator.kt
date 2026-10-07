@@ -3,6 +3,7 @@ package api.bot.webwalk.plan
 import io.luna.game.model.Position
 import io.luna.game.model.collision.CollisionManager
 import io.luna.game.model.path.FallbackPathfinder
+import io.luna.game.model.path.GamePathfinder
 import io.luna.game.model.path.PathResultType
 import io.luna.game.model.path.astar.LongRangePathfinder
 import io.luna.game.model.path.route.RoutePathfinder
@@ -55,22 +56,34 @@ fun ticksForTiles(tiles: Int): Int = (tiles + 1) / 2
  * It reads the snapshots of the collision, so it is safe to use from any thread.
  *
  * @param collision The collision of the world.
+ * @param longRange If routes beyond the range of the route finder go to a long range pathfinder. If not, they can't be
+ * walked.
+ * @param doors The doors of the web. A route that goes through one of them can't be walked, because the door may be shut by
+ * the time the bot gets there. It has to be crossed with the door, which is opened if it is closed.
  *
  * @author Hydrozoa
  */
-class PathfinderWalkEstimator(collision: CollisionManager) : WalkEstimator {
+class PathfinderWalkEstimator(collision: CollisionManager,
+                              longRange: Boolean = true,
+                              private val doors: DoorCrossings? = null) : WalkEstimator {
 
     /**
-     * The pathfinder that finds the routes. Routes beyond the range of the route finder go to a long range pathfinder.
+     * The pathfinder that finds the routes.
      */
-    private val pathfinder =
-        FallbackPathfinder<Position>(RoutePathfinder(collision, 1, 0, RouteStrategy.NORMAL)) { origin ->
-            LongRangePathfinder(collision, origin.z)
+    private val pathfinder: GamePathfinder<Position> = RoutePathfinder(collision, 1, 0, RouteStrategy.NORMAL).let { route ->
+        if (longRange) {
+            FallbackPathfinder<Position>(route) { origin -> LongRangePathfinder(collision, origin.z) }
+        } else {
+            route
         }
+    }
 
     override fun ticks(from: Position, to: Position): Int? {
         val result = pathfinder.find(from, to)
         if (result.type != PathResultType.COMPLETE && result.type != PathResultType.EMPTY) {
+            return null
+        }
+        if (doors != null && doors.crosses(from, result.path)) {
             return null
         }
         var tiles = 0

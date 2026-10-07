@@ -3,6 +3,7 @@ package api.bot.webwalk.walk
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.WebWalkGraph
 import api.bot.webwalk.plan.BotCapabilities
+import api.bot.webwalk.plan.DoorCrossings
 import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.webwalk.plan.WebWalkPlan
 import api.bot.webwalk.plan.WebWalkPlanner
@@ -37,7 +38,7 @@ object WebWalker {
      * shared by all bots.
      */
     private val planner: WebWalkPlanner by lazy {
-        WebWalkPlanner(graph, PathfinderWalkEstimator(world.collisionManager))
+        WebWalkPlanner(graph, PathfinderWalkEstimator(world.collisionManager, doors = DoorCrossings.of(graph)))
     }
 
     /**

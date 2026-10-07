@@ -4,6 +4,7 @@ import api.bot.webwalk.data.WebWalkDataException
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.TeleportKind
+import api.bot.webwalk.plan.DoorCrossings
 import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.zone.SubZone
 import api.bot.zone.Zone
@@ -70,13 +71,14 @@ object WebWalkLiveGenerator {
      * far apart, which has to be inside the range of [RoutePathfinder] (56 tiles), so that the walks between them are
      * found without a long range search.
      */
-    private const val SCATTER_CELL_SIZE = 24
+    private const val SCATTER_CELL_SIZE = 16
 
     /**
-     * How far apart, in tiles, nodes may be to be linked first. This is the range of [RoutePathfinder], so every walk that
-     * the scattered hubs make possible is tried.
+     * How far apart, in tiles, nodes may be to be linked. Hubs of cells next to each other are at most 31 tiles apart, so
+     * this leaves room for some of the cells that are skipped, and keeps every walk well inside the range of
+     * [RoutePathfinder].
      */
-    private const val NEAR_LINK_RADIUS = 56
+    private const val NEAR_LINK_RADIUS = 40
 
     /**
      * The time of a teleport spell, in ticks: the cast is five ticks long (see `Magic.regularStyle`).
@@ -378,7 +380,7 @@ object WebWalkLiveGenerator {
 
         val graph = WebWalkLoader.fromSources(sources)
         val collision = world.collisionManager
-        val estimator = PathfinderWalkEstimator(collision)
+        val estimator = PathfinderWalkEstimator(collision, longRange = false, doors = DoorCrossings.of(graph))
 
         // Which nodes can be walked between is found once for all of them, so the pathfinder is only asked about the ones that
         // can. Otherwise every search for a node that can't be reached would cover everything that can.
@@ -404,7 +406,7 @@ object WebWalkLiveGenerator {
         var links: List<GeneratedLink>
         var isolated = 0
         while (true) {
-            links = WalkLinker(pathfinderCost, nearRadius = NEAR_LINK_RADIUS)
+            links = WalkLinker(pathfinderCost, nearRadius = NEAR_LINK_RADIUS, farRadius = NEAR_LINK_RADIUS)
                 .link(kept) { componentById.getValue(it.id) }
             val byId = kept.associateBy { it.id }
             val inRange = HashSet<String>()
