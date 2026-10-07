@@ -89,4 +89,34 @@ tasks.withType<KotlinCompile>().all {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    // Decoding the cache's map data, which some tests do, needs more than the default heap.
+    maxHeapSize = "2g"
+}
+
+// Starts the server and writes the bot web-walker's data (obstacles.json, climbs.json and hubs.json in
+// data/game/bots/webwalk) from the cache and the live world, then exits. Use -Pwebwalk=check to only report whether the
+// files are out of date. Disabling bots makes the server start and run faster.
+tasks.register<JavaExec>("generateWebWalk") {
+    group = "luna"
+    description = "Generates the data that the bot web-walker travels by."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "io.luna.Luna"
+    systemProperty("luna.webwalk.generate", (project.findProperty("webwalk") ?: "write").toString())
+    maxHeapSize = "4g"
+}
+
+// Draws the bot web-walker's data (everything in data/game/bots/webwalk) over the terrain of the cache and writes it to a
+// PNG, to get a quick idea of what the web looks like. Properties, all optional: -Pplane=0, -Pscale=3 (pixels per tile),
+// -Pbounds=minX,minY,maxX,maxY (or "auto" to fit the nodes of the plane; the default is the surface of the world) and
+// -Pout=build/webwalk/webwalk-map.png.
+tasks.register<JavaExec>("renderWebWalkMap") {
+    group = "luna"
+    description = "Draws the web-walker graph over the world map as a PNG."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "api.bot.webwalk.visualize.WebWalkMapRenderer"
+    systemProperty("java.awt.headless", "true")
+    for ((property, name) in listOf("plane" to "plane", "scale" to "scale", "bounds" to "bounds", "out" to "out")) {
+        project.findProperty(property)?.let { systemProperty("luna.webwalk.map.$name", it.toString()) }
+    }
+    maxHeapSize = "4g"
 }
