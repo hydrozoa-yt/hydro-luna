@@ -10,8 +10,14 @@ import api.bot.webwalk.plan.WebWalkPlanner
 import api.predef.*
 import io.luna.game.model.Position
 import io.luna.game.model.mob.bot.Bot
+import kotlinx.coroutines.future.await
 import java.nio.file.Path
 import java.util.Random
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Walks bots anywhere in the world: plans a trip, and takes the bot along it, through doors and up ladders.
@@ -42,7 +48,24 @@ object WebWalker {
     }
 
     /**
-     * Plans a trip for a bot, without taking it. Must be called on the game thread, because it reads the bot as it is.
+     * The pool that plans run on. It is small and its own, so that plans don't wait for the path searches of the navigators
+     * (and the other way around). Its threads don't keep the server from exiting.
+     */
+    private val planPool: ExecutorService by lazy {
+        val count = AtomicInteger()
+        Executors.newFixedThreadPool(PLANNER_THREADS) { task ->
+            Thread(task, "WebWalkPlanner-${count.incrementAndGet()}").apply { isDaemon = true }
+        }
+    }
+
+    /**
+     * The number of threads that plan trips.
+     */
+    private const val PLANNER_THREADS = 2
+
+    /**
+     * Plans a trip for a bot, without taking it, on the thread that calls it. Must be called on the game thread, because it
+     * reads the bot as it is. Prefer [planAsync], which doesn't hold up the game thread.
      *
      * @param bot The bot.
      * @param destination Where it is going.
@@ -54,7 +77,27 @@ object WebWalker {
                      random)
 
     /**
-     * Walks a bot to a destination. Must be called from a bot script, on the game thread.
+     * Plans a trip for a bot, without taking it, on the pool of the planner. Must be called on the game thread, because the
+     * bot is read as it is now, and the search is done on the position and the capabilities that it has now.
+     *
+     * @param bot The bot.
+     * @param destination Where it is going.
+     * @param random Where the variation of the route comes from.
+     * @return A future of the trip, or of `null` if the bot can't get there. It is completed on a thread of the pool, so
+     * code that has to run on the game thread should continue on [io.luna.game.GameService.gameExecutor].
+     */
+    fun planAsync(bot: Bot, destination: Position, random: Random = Random()): CompletableFuture<WebWalkPlan?> {
+        // The web and the planner are made here the first time, on the game thread, rather than on the pool.
+        val planner = planner
+        val start = bot.position
+        val snapshot = BotCapabilities.snapshot(bot, graph.teleports)
+        val intelligence = bot.personality.intelligence
+        return CompletableFuture.supplyAsync({ planner.plan(start, destination, snapshot, intelligence, random) }, planPool)
+    }
+
+    /**
+     * Walks a bot to a destination. Must be called from a bot script, on the game thread. The trip is planned on the pool of
+     * the planner while the script waits, and the walk carries on on the game thread.
      *
      * @param bot The bot.
      * @param destination Where it is going.
@@ -63,7 +106,9 @@ object WebWalker {
      */
     suspend fun webWalk(bot: Bot, destination: Position, radius: Int = 0): WebWalkResult {
         val plan = try {
-            plan(bot, destination)
+            planAsync(bot, destination).await()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.error("Could not plan a web walk for ${bot.username}!", e)
             return WebWalkResult(false, "Could not plan the trip: $e")
