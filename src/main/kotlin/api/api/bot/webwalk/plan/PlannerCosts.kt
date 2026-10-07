@@ -1,0 +1,46 @@
+package api.bot.webwalk.plan
+
+/**
+ * How much the planner dislikes things, as numbers of ticks. The weights are tuned by hand, so they are all here.
+ *
+ * Most edges already say how long they take, in ticks while running. What is added to that, to steer bots away from things
+ * that they would rather not do, are penalties.
+ *
+ * @property doorTicks The time to open a door, gate or curtain and step through, if the edge doesn't say.
+ * @property ladderTicks The time to climb a ladder or staircase, if the edge doesn't say.
+ * @property trapdoorTicks The time to open a trapdoor and climb down, if the edge doesn't say.
+ * @property shipTicks The time of a ship trip, if the edge doesn't say.
+ * @property fairyRingTicks The time of a fairy ring trip.
+ * @property coinWeight The penalty for each coin that an edge needs, so that bots don't pay fares for short trips.
+ * @property runePenalty The penalty for casting a teleport spell, for its runes.
+ * @property chargePenalty The penalty for using the charge of teleport jewellery.
+ * @property wildernessEntry The penalty for walking into the wilderness, or arriving in it.
+ * @property wildernessWalkFactor The penalty for each tick walked in the wilderness, as a multiple of those ticks.
+ * @property wildernessLevelScale How much each level of the wilderness adds to that multiple, as a fraction of it.
+ * @property linkRadius How far, in tiles, nodes are looked for to link the start and the destination to. This is the range
+ * of the route pathfinder, so that the estimates are made without the long range search.
+ * @property linkCandidates How many of the nearest nodes are tried to link the start and the destination to.
+ * @property alternatives How many other trips are tried to vary the route of a bot.
+ * @property jitter How much the cost of each edge may be changed, as a fraction, when trying other trips.
+ * @property toleranceFraction How much more than the best trip a bot may take, as a fraction, at the lowest intelligence.
+ * @property toleranceMinimum The least ticks that a bot may take more than the best trip, at the lowest intelligence.
+ *
+ * @author Hydrozoa
+ */
+data class PlannerCosts(val doorTicks: Double = 3.0,
+                        val ladderTicks: Double = 4.0,
+                        val trapdoorTicks: Double = 6.0,
+                        val shipTicks: Double = 40.0,
+                        val fairyRingTicks: Double = 12.0,
+                        val coinWeight: Double = 0.02,
+                        val runePenalty: Double = 6.0,
+                        val chargePenalty: Double = 12.0,
+                        val wildernessEntry: Double = 250.0,
+                        val wildernessWalkFactor: Double = 4.0,
+                        val wildernessLevelScale: Double = 0.1,
+                        val linkRadius: Int = 56,
+                        val linkCandidates: Int = 6,
+                        val alternatives: Int = 8,
+                        val jitter: Double = 0.3,
+                        val toleranceFraction: Double = 0.2,
+                        val toleranceMinimum: Double = 8.0)

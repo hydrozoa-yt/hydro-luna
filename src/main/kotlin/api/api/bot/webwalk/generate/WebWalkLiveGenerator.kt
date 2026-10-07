@@ -3,6 +3,7 @@ package api.bot.webwalk.generate
 import api.bot.webwalk.data.WebWalkDataException
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.zone.SubZone
 import api.bot.zone.Zone
 import api.predef.*
@@ -13,10 +14,6 @@ import engine.obj.Trapdoor
 import engine.obj.TrapdoorLanding
 import io.luna.game.model.Position
 import io.luna.game.model.`object`.GameObject
-import io.luna.game.model.path.FallbackPathfinder
-import io.luna.game.model.path.PathResultType
-import io.luna.game.model.path.astar.LongRangePathfinder
-import io.luna.game.model.path.route.RoutePathfinder
 import io.luna.game.model.path.route.RouteStrategy
 import io.luna.game.model.path.route.StepValidator
 import java.nio.file.Files
@@ -319,8 +316,7 @@ object WebWalkLiveGenerator {
 
         val graph = WebWalkLoader.fromSources(sources)
         val collision = world.collisionManager
-        val routes = RoutePathfinder(collision, 1, 0, RouteStrategy.NORMAL)
-        val pathfinder = FallbackPathfinder<Position>(routes) { origin -> LongRangePathfinder(collision, origin.z) }
+        val estimator = PathfinderWalkEstimator(collision)
 
         // Which nodes can be walked between is found once for all of them, so the pathfinder is only asked about the ones that
         // can. Otherwise every search for a node that can't be reached would cover everything that can.
@@ -341,13 +337,7 @@ object WebWalkLiveGenerator {
         // Nodes should be close together, so the walks between them stay inside the range of the route pathfinder. A
         // scattered hub with no walk to a node in range is only in a pocket that long walks lead to, so it is left out too,
         // and the rest are linked again without it, until none are left that have to be.
-        val pathfinderCost = { from: Position, to: Position ->
-            val result = pathfinder.find(from, to)
-            when (result.type) {
-                PathResultType.COMPLETE, PathResultType.EMPTY -> walkingTicks(from, result.path)
-                else -> null
-            }
-        }
+        val pathfinderCost = estimator::ticks
         var kept = nodes.filter { it.id !in dropped }
         var links: List<GeneratedLink>
         var isolated = 0
@@ -376,19 +366,6 @@ object WebWalkLiveGenerator {
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
         return Output(doors.obstacles, climbsText, WebWalkWriter.hubs(hubs, links))
-    }
-
-    /**
-     * Computes the ticks that it takes to run along a path, which covers two tiles in a tick.
-     */
-    private fun walkingTicks(start: Position, path: Collection<Position>): Int {
-        var tiles = 0
-        var previous = start
-        for (waypoint in path) {
-            tiles += previous.computeLongestDistance(waypoint)
-            previous = waypoint
-        }
-        return (tiles + 1) / 2
     }
 
     /**

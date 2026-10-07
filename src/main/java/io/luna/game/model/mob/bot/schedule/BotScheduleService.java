@@ -94,12 +94,12 @@ public final class BotScheduleService extends AbstractScheduledService {
     /**
      * The total base number of bots this service may try to log in during a single scheduler pass.
      */
-    private static final int BASE_LOGIN_COUNT = 15;
+    private static final int BASE_LOGIN_COUNT = 2000; // TODO TEMP stress test, original: 15
 
     /**
      * The base range amount of new bots this service may try to log in during a single scheduler pass.
      */
-    private static final Range<Integer> NEW_LOGIN_COUNT_RANGE = Range.closed(1, 5);
+    private static final Range<Integer> NEW_LOGIN_COUNT_RANGE = Range.closed(200, 400); // TODO TEMP stress test, original: (1, 5)
 
     /**
      * The path used to persist pending bot login requests across server restarts.
@@ -203,7 +203,7 @@ public final class BotScheduleService extends AbstractScheduledService {
 
     @Override
     protected Scheduler scheduler() {
-        return Scheduler.newFixedDelaySchedule(Duration.ofSeconds(RandomUtils.inclusive(15, 30)), Duration.ofMinutes(1));
+        return Scheduler.newFixedDelaySchedule(Duration.ofSeconds(RandomUtils.inclusive(15, 30)), Duration.ofSeconds(10)); // TODO TEMP stress test, original: Duration.ofMinutes(1)
     }
 
     /**
