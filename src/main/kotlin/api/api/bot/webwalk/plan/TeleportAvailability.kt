@@ -11,7 +11,6 @@ import game.skill.magic.Rune
 import game.skill.magic.RuneRequirement
 import game.skill.magic.Staff
 import game.skill.magic.teleportSpells.TeleportSpell
-import io.luna.Luna
 import io.luna.game.model.mob.bot.Bot
 
 /**
@@ -22,8 +21,9 @@ import io.luna.game.model.mob.bot.Bot
  *
  * - a teleport spell if it is on the right spellbook and has the level and what the spell needs. What the spell needs is
  *   its runes (a staff stands in for the runes it represents) and other items in the inventory, and equipment. Combination
- *   runes are not counted, so a bot that only has those is thought unable to cast, which is the safe way to be wrong. In
- *   development mode the game lets anyone cast anything for free, and so does this.
+ *   runes are not counted, so a bot that only has those is thought unable to cast, which is the safe way to be wrong. The
+ *   requirements are enforced in development mode too, although the game itself lets anyone cast anything for free there,
+ *   so that bots plan the way they would on a real server.
  * - a teleport by jewellery if it carries a piece with a charge left, in its inventory or equipped.
  * - the home teleport always.
  *
@@ -66,9 +66,6 @@ object TeleportAvailability {
         val spell = TeleportSpell.entries.firstOrNull { it.name == key } ?: return false
         if (bot.spellbook != spell.style.spellbook) {
             return false
-        }
-        if (Luna.settings().game().betaMode()) {
-            return true
         }
         if (bot.magic.level < spell.level) {
             return false
