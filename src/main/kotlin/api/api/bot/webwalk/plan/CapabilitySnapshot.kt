@@ -12,7 +12,7 @@ import api.bot.webwalk.model.Requirements
  * by item id.
  * @property flags The unlocks that the bot has, such as [FAIRY_RINGS].
  * @property wildernessLevel The wilderness level where the bot is, or `0`.
- * @property usableTeleports The ids of the teleports (see `teleports.json`) that the bot can use right now, because it has
+ * @property usableTeleports The ids of the teleports (see `teleports.jsonc`) that the bot can use right now, because it has
  * the level, the runes or charges, and nothing is stopping it.
  *
  * @author Hydrozoa

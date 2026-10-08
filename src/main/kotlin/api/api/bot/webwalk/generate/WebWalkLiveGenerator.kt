@@ -23,20 +23,22 @@ import io.luna.game.model.path.route.RouteStrategy
 import io.luna.game.model.path.route.StepValidator
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 
 /**
- * Makes the generated files of the web-walker: `obstacles.json`, `climbs.json`, `teleports.json` and `hubs.json`. Everything is made in a
- * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world.
+ * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `hubs.jsonc`. Everything is made in a
+ * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world. The files start
+ * with a comment that says they are generated and when, see [WebWalkWriter.header].
  *
- * - The closed doors, gates and curtains of `obstacles.json` are made by [WebWalkDoorGenerator] from the map data of the
+ * - The closed doors, gates and curtains of `obstacles.jsonc` are made by [WebWalkDoorGenerator] from the map data of the
  *   cache.
- * - The ladders, stairs and trapdoors of `climbs.json` land where [LadderDestination], [StairDestination] and
+ * - The ladders, stairs and trapdoors of `climbs.jsonc` land where [LadderDestination], [StairDestination] and
  *   [Trapdoor] say that they do, which is what players get.
- * - The teleports of `teleports.json` are the teleport spells, the destinations of the teleport jewellery, and the home
+ * - The teleports of `teleports.jsonc` are the teleport spells, the destinations of the teleport jewellery, and the home
  *   teleport, so that they are never written out by hand.
- * - The hubs of `hubs.json` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
+ * - The hubs of `hubs.jsonc` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
  *   on.
- * - The walk edges of `hubs.json` link every node of the graph (the ones from the files that are not generated here too)
+ * - The walk edges of `hubs.jsonc` link every node of the graph (the ones from the files that are not generated here too)
  *   with the cost of walking between them, according to the collision of the world.
  *
  * It runs in two steps. [gather] needs the game thread, because it reads the world as it is. [finish] only reads the
@@ -124,12 +126,12 @@ object WebWalkLiveGenerator {
                    val report: GenerationReport)
 
     /**
-     * The text of the generated files.
+     * The text of the generated files, without their [WebWalkWriter.header].
      *
-     * @property obstacles The text of `obstacles.json`.
-     * @property climbs The text of `climbs.json`.
-     * @property teleports The text of `teleports.json`.
-     * @property hubs The text of `hubs.json`.
+     * @property obstacles The text of `obstacles.jsonc`.
+     * @property climbs The text of `climbs.jsonc`.
+     * @property teleports The text of `teleports.jsonc`.
+     * @property hubs The text of `hubs.jsonc`.
      */
     class Output(val obstacles: String, val climbs: String, val teleports: String, val hubs: String)
 
@@ -358,7 +360,7 @@ object WebWalkLiveGenerator {
      *
      * @param gathered What [gather] found.
      * @param directory The directory of the other files, which is `data/game/bots/webwalk`.
-     * @return The text of `climbs.json` and `hubs.json`.
+     * @return The text of `climbs.jsonc` and `hubs.jsonc`.
      */
     fun finish(gathered: Gathered, directory: Path): Output {
         val sources = HashMap<String, String>()
@@ -433,21 +435,24 @@ object WebWalkLiveGenerator {
     }
 
     /**
-     * Writes the generated files.
+     * Writes the generated files, each with a [WebWalkWriter.header] that says it is generated and when.
      *
      * @param output The text to write.
      * @param directory The directory to write to.
+     * @param generatedAt When the files were generated.
      */
-    fun write(output: Output, directory: Path) {
+    fun write(output: Output, directory: Path, generatedAt: Instant = Instant.now()) {
+        val header = WebWalkWriter.header(generatedAt)
         Files.createDirectories(directory)
-        Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), output.obstacles)
-        Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), output.climbs)
-        Files.writeString(directory.resolve(WebWalkLoader.TELEPORTS), output.teleports)
-        Files.writeString(directory.resolve(WebWalkLoader.HUBS), output.hubs)
+        Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), header + output.obstacles)
+        Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), header + output.climbs)
+        Files.writeString(directory.resolve(WebWalkLoader.TELEPORTS), header + output.teleports)
+        Files.writeString(directory.resolve(WebWalkLoader.HUBS), header + output.hubs)
     }
 
     /**
-     * Finds the generated files that are not what [output] says they should be.
+     * Finds the generated files that are not what [output] says they should be. The header of a file is left out of the
+     * comparison, as it changes every time.
      *
      * @param output The text that the files should have.
      * @param directory The directory of the files.
@@ -465,7 +470,7 @@ object WebWalkLiveGenerator {
                 stale += "$file (missing)"
                 continue
             }
-            val found = Files.readString(path).replace("\r\n", "\n")
+            val found = WebWalkWriter.withoutHeader(Files.readString(path).replace("\r\n", "\n"))
             if (found != text) {
                 stale += "$file (${firstDifference(text, found)})"
             }

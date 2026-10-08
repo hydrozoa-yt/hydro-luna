@@ -93,7 +93,7 @@ tasks.named<Test>("test") {
     maxHeapSize = "2g"
 }
 
-// Starts the server and writes the bot web-walker's data (obstacles.json, climbs.json and hubs.json in
+// Starts the server and writes the bot web-walker's data (obstacles.jsonc, climbs.jsonc, teleports.jsonc and hubs.jsonc in
 // data/game/bots/webwalk) from the cache and the live world, then exits. Use -Pwebwalk=check to only report whether the
 // files are out of date. Disabling bots makes the server start and run faster.
 tasks.register<JavaExec>("generateWebWalk") {

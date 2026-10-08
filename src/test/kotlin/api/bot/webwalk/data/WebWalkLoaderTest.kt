@@ -187,7 +187,7 @@ class WebWalkLoaderTest {
         val found = problems(HUBS to """
             { "hubs": [ { "id": "a", "pos": [1, 1] } ], "edges": [ { "from": "a", "to": "b" } ] }
         """)
-        assertEquals(listOf("hubs.json.edges[0]: 'to' refers to unknown node 'b'"), found)
+        assertEquals(listOf("hubs.jsonc.edges[0]: 'to' refers to unknown node 'b'"), found)
     }
 
     @Test
@@ -206,10 +206,10 @@ class WebWalkLoaderTest {
                         { "id": "d", "pos": "nope" } ] }
         """)
         assertEquals(4, found.size)
-        assertTrue(found.any { it.startsWith("hubs.json.hubs[0].tagz: unknown field") })
-        assertTrue(found.any { it.startsWith("hubs.json.hubs[1].id: must be lower case") })
-        assertTrue(found.any { it.startsWith("hubs.json.hubs[2].pos: must have x and y") })
-        assertTrue(found.any { it.startsWith("hubs.json.hubs[3].pos: must be an array") })
+        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[0].tagz: unknown field") })
+        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[1].id: must be lower case") })
+        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[2].pos: must have x and y") })
+        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[3].pos: must be an array") })
     }
 
     @Test
@@ -234,16 +234,16 @@ class WebWalkLoaderTest {
         """
         val found = problems(OBSTACLES to far)
         assertEquals(3, found.size)
-        assertTrue(found[0].contains("obstacles.json[0].to: must be the tile next to 'from'"))
-        assertTrue(found[1].contains("obstacles.json[1].to: must be the tile next to 'from'"))
-        assertTrue(found[2].contains("obstacles.json[2].type: must be one of"))
+        assertTrue(found[0].contains("obstacles.jsonc[0].to: must be the tile next to 'from'"))
+        assertTrue(found[1].contains("obstacles.jsonc[1].to: must be the tile next to 'from'"))
+        assertTrue(found[2].contains("obstacles.jsonc[2].type: must be one of"))
     }
 
     @Test
     fun duplicateObstaclesAreReported() {
         val found = problems(OBSTACLES to "[" + door.trim().removeSurrounding("[", "]") + "," +
                 door.trim().removeSurrounding("[", "]") + "]")
-        assertEquals(listOf("obstacles.json[1]: duplicate of an earlier obstacle"), found)
+        assertEquals(listOf("obstacles.jsonc[1]: duplicate of an earlier obstacle"), found)
     }
 
     @Test
@@ -272,11 +272,11 @@ class WebWalkLoaderTest {
         """
         val found = problems(TELEPORTS to teleports)
         assertEquals(5, found.size)
-        assertTrue(found[0].startsWith("teleports.json[0].key: is required"))
-        assertTrue(found[1].startsWith("teleports.json[1].option: is required"))
-        assertTrue(found[2].startsWith("teleports.json[2].option: is only for"))
-        assertTrue(found[3].startsWith("teleports.json[3].kind: must be one of"))
-        assertTrue(found[4].startsWith("teleports.json[5]: duplicate"))
+        assertTrue(found[0].startsWith("teleports.jsonc[0].key: is required"))
+        assertTrue(found[1].startsWith("teleports.jsonc[1].option: is required"))
+        assertTrue(found[2].startsWith("teleports.jsonc[2].option: is only for"))
+        assertTrue(found[3].startsWith("teleports.jsonc[3].kind: must be one of"))
+        assertTrue(found[4].startsWith("teleports.jsonc[5]: duplicate"))
     }
 
     @Test
@@ -296,10 +296,10 @@ class WebWalkLoaderTest {
     fun invalidJsonAndWrongRootsAreReported() {
         val found = problems(HUBS to "{ \"hubs\": [ ", OBSTACLES to "{}", SHIPS to "[1]", TELEPORTS to "5")
         assertEquals(4, found.size)
-        assertTrue(found.any { it.startsWith("hubs.json: invalid JSON") })
-        assertTrue(found.any { it.startsWith("obstacles.json: must be an array") })
+        assertTrue(found.any { it.startsWith("hubs.jsonc: invalid JSON") })
+        assertTrue(found.any { it.startsWith("obstacles.jsonc: must be an array") })
         assertTrue(found.any { it.startsWith("ships.json: must be an object") })
-        assertTrue(found.any { it.startsWith("teleports.json: must be an array") })
+        assertTrue(found.any { it.startsWith("teleports.jsonc: must be an array") })
     }
 
     @Test

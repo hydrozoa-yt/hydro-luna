@@ -12,7 +12,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Makes `obstacles.json`, which holds every door, gate and curtain of the world, as it is when it is closed.
+ * Makes `obstacles.jsonc`, which holds every door, gate and curtain of the world, as it is when it is closed.
  *
  * The doors come from the ids in `data/game/world/doors/` that are found in the map data of the cache. This needs no
  * running world, so a test can run it against the cache to make sure that the committed file is still up to date. The
@@ -78,7 +78,7 @@ object WebWalkDoorGenerator {
     /**
      * The result of a generation.
      *
-     * @property obstacles The text of `obstacles.json`.
+     * @property obstacles The text of `obstacles.jsonc`.
      * @property report What was made and what was left out.
      */
     class Result(val obstacles: String, val report: GenerationReport)
@@ -262,7 +262,7 @@ object WebWalkDoorGenerator {
     }
 
     /**
-     * Makes `obstacles.json` from the files of the project.
+     * Makes `obstacles.jsonc` from the files of the project.
      *
      * @param doorDirectory The directory of the door files.
      * @param table The map data.

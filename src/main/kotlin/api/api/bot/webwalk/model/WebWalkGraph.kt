@@ -101,7 +101,7 @@ enum class EdgeType(val bidirectionalByDefault: Boolean) {
         get() = this == DOOR || this == GATE || this == CURTAIN
 
     /**
-     * @return `true` if this type is made from an entry of `obstacles.json`.
+     * @return `true` if this type is made from an entry of `obstacles.jsonc`.
      */
     val isObstacle: Boolean
         get() = isDoorLike || this == LADDER || this == STAIR || this == TRAPDOOR

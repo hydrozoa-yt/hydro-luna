@@ -23,22 +23,24 @@ import java.nio.file.Path
  * Every file is optional, and a missing file is the same as an empty one. All the files are read before anything is
  * reported, so [WebWalkDataException] lists every problem at once. These are the files, with their fields:
  *
- * - `hubs.json` (generated) and `hubs_manual.json` (maintained by hand): an object with `hubs` (`id`, `pos`, optional
+ * - `hubs.jsonc` (generated) and `hubs_manual.json` (maintained by hand): an object with `hubs` (`id`, `pos`, optional
  *   `tags`) and `edges` (`from`, `to`, optional `cost`, `bidirectional`, `requirements`) that walk between nodes. The ids
  *   of the two files share one namespace, so a manual hub can't silently replace a generated one.
- * - `obstacles.json` (generated): closed doors, gates and curtains. `climbs.json` (generated): ladders, stairs and
+ * - `obstacles.jsonc` (generated): closed doors, gates and curtains. `climbs.jsonc` (generated): ladders, stairs and
  *   trapdoors. Both have entries with a `type`, `object`,
  *   `pos`, `from` and `to`, and an optional `cost`, `bidirectional`, `option` and `requirements`.
  * - `obstacle_overrides.json` (maintained by hand): patches for obstacles, found by `pos` (and optionally `object`), that
  *   set `requirements` or `cost`, or turn the obstacle off with `disabled`. An override that finds no obstacle is a
  *   problem, so overrides can't quietly rot after the obstacles are generated again.
- * - `teleports.json`: teleports, each with an `id`, `kind`, `dest`, `cost`, and the `key` (and for jewellery the `option`)
- *   that says which spell or jewellery it is.
+ * - `teleports.jsonc` (generated): teleports, each with an `id`, `kind`, `dest`, `cost`, and the `key` (and for jewellery
+ *   the `option`) that says which spell or jewellery it is.
  * - `ships.json`: an object with `ports` (`id`, `pos`) and `routes` (`from`, `to`, `cost`), or an empty array.
  * - `fairy_rings.json`: fairy rings, each with an `id`, `code` and `pos`.
  *
  * Positions are written as `[x, y]` or `[x, y, z]`. Requirements are written as an object with any of `skills` (skill name
  * to level), `items` (`id` and optional `amount`), `coins`, `flags` and `maxWilderness`.
+ *
+ * The files may have `//` comments, which the generated ones use for a header that says they are generated.
  *
  * @author Hydrozoa
  */
@@ -47,7 +49,7 @@ object WebWalkLoader {
     /**
      * The generated hubs, and the walk edges between them.
      */
-    const val HUBS = "hubs.json"
+    const val HUBS = "hubs.jsonc"
 
     /**
      * The hubs and walk edges that are maintained by hand.
@@ -57,12 +59,12 @@ object WebWalkLoader {
     /**
      * The generated obstacles.
      */
-    const val OBSTACLES = "obstacles.json"
+    const val OBSTACLES = "obstacles.jsonc"
 
     /**
      * The generated ladders, stairs and trapdoors, which are obstacles too.
      */
-    const val CLIMBS = "climbs.json"
+    const val CLIMBS = "climbs.jsonc"
 
     /**
      * The patches that are applied to the generated obstacles.
@@ -72,7 +74,7 @@ object WebWalkLoader {
     /**
      * The teleports.
      */
-    const val TELEPORTS = "teleports.json"
+    const val TELEPORTS = "teleports.jsonc"
 
     /**
      * The ships.
@@ -155,7 +157,7 @@ object WebWalkLoader {
                               val action: EdgeAction? = null)
 
     /**
-     * An entry of `obstacles.json`, which overrides can still change.
+     * An entry of `obstacles.jsonc`, which overrides can still change.
      */
     private class Obstacle(val where: String,
                            val type: EdgeType,
