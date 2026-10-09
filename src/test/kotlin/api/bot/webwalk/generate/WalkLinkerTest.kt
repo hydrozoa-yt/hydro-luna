@@ -109,12 +109,99 @@ class WalkLinkerTest {
         val doors = DoorCrossings(listOf(Pair(Position(10, 0), Position(11, 0))))
         val links = WalkLinker({ a, b ->
             tried += setOf(a.x, b.x)
-            pathCost(a, b)
+            // The door is shut, so there is no walk between its sides.
+            if ((a.x <= 10) != (b.x <= 10)) null else pathCost(a, b)
         }, neighbours = 1, doors = doors).link(nodes)
 
-        // The door is the one neighbour of a, so it only gets a link from c, and the walk between the sides is never searched for.
+        // The door is the one neighbour of a, and the walk between the sides is never searched for. c is on the other side.
         assertTrue(tried.none { it == setOf(10, 11) })
-        assertEquals(setOf(setOf("a", "c"), setOf("b", "c")), links.map { setOf(it.from, it.to) }.toSet())
+        assertEquals(setOf(setOf("b", "c")), links.map { setOf(it.from, it.to) }.toSet())
+    }
+
+    @Test
+    fun aNodeIsNotLinkedToANodeBesideOneThatItIsLinkedTo() {
+        val nodes = listOf(node("a", 0), node("b", 10), node("c", 11))
+        val links = WalkLinker(pathCost).link(nodes)
+
+        // a is linked to b, which is nearer, so not to c next to it. c still gets a link, from b.
+        assertEquals(setOf(setOf("a", "b"), setOf("b", "c")), links.map { setOf(it.from, it.to) }.toSet())
+    }
+
+    @Test
+    fun aNodeCountsTheLinksThatOtherNodesMadeToIt() {
+        // a is linked to b, so b has its one neighbour already, and goes no farther to c. c is linked to a.
+        val nodes = listOf(node("a", 10), node("b", 0), node("c", 20))
+        val links = WalkLinker(pathCost, neighbours = 1).link(nodes)
+
+        assertEquals(setOf(setOf("a", "b"), setOf("a", "c")), links.map { setOf(it.from, it.to) }.toSet())
+    }
+
+    @Test
+    fun nodesAreLinkedByTheWalkToThemAndNotByTheDistance() {
+        // n is nearer to d than f is, but the walk to it goes around something and takes far longer.
+        val nodes = listOf(node("d", 0), node("f", 12), node("n", 8))
+        val links = WalkLinker({ a, b -> if (setOf(a.x, b.x) == setOf(0, 8)) 30 else pathCost(a, b) }, neighbours = 1).link(nodes)
+
+        assertEquals(setOf(setOf("d", "f"), setOf("f", "n")), links.map { setOf(it.from, it.to) }.toSet())
+    }
+
+    @Test
+    fun theLeavesOfTwoDoorsAreLinkedOnceAndNotOncePerLeaf() {
+        // Two pairs of nodes side by side, like the leaves of two gates that face each other.
+        val nodes = listOf(node("a1", 0, 0), node("a2", 1, 0), node("c1", 0, 10), node("c2", 1, 10))
+        val links = WalkLinker(pathCost).link(nodes)
+
+        // The leaves are linked to each other, and the pairs are linked once, not a1-c1 and a2-c2 (or the crossed ones) as well.
+        assertEquals(setOf(setOf("a1", "a2"), setOf("a1", "c1"), setOf("c1", "c2")), links.map { setOf(it.from, it.to) }.toSet())
+    }
+
+    /**
+     * Links a node and two nodes a tile apart, which take [walk] ticks to walk between because something is in the way.
+     */
+    private fun linksWithObjectInTheWay(walk: Int): Set<Set<String>> {
+        val nodes = listOf(node("d", 0, 0), node("l1", 10, 0), node("l2", 11, 1))
+        val links = WalkLinker({ a, b -> if (setOf(a.x, b.x) == setOf(10, 11)) walk else pathCost(a, b) }).link(nodes)
+        return links.map { setOf(it.from, it.to) }.toSet()
+    }
+
+    @Test
+    fun nodesWithAShortWalkAroundAnObjectBetweenThemAreBesideEachOther() {
+        // Like a ladder and a trapdoor next to each other, which d is not linked to both of.
+        assertEquals(setOf(setOf("d", "l1"), setOf("l1", "l2")), linksWithObjectInTheWay(4))
+    }
+
+    @Test
+    fun nodesAFewTilesApartWithAShortWalkBetweenThemAreBesideEachOther() {
+        val nodes = listOf(node("d", 0, 0), node("l1", 10, 0), node("l2", 13, 0))
+        val links = WalkLinker(pathCost).link(nodes).map { setOf(it.from, it.to) }.toSet()
+
+        // l2 is 3 tiles from l1, which is a walk of 2 ticks, so d reaches both of them through l1.
+        assertEquals(setOf(setOf("d", "l1"), setOf("l1", "l2")), links)
+    }
+
+    @Test
+    fun nodesFartherApartThanTheRadiusAreNotBesideEachOther() {
+        val nodes = listOf(node("d", 0, 0), node("l1", 10, 0), node("l2", 14, 0))
+        val links = WalkLinker(pathCost).link(nodes).map { setOf(it.from, it.to) }.toSet()
+
+        assertEquals(setOf(setOf("d", "l1"), setOf("d", "l2"), setOf("l1", "l2")), links)
+    }
+
+    @Test
+    fun nodesWithALongWalkBetweenThemAreNotBesideEachOther() {
+        // Like two nodes on either side of a wall, which are different places.
+        assertEquals(setOf(setOf("d", "l1"), setOf("d", "l2"), setOf("l1", "l2")), linksWithObjectInTheWay(21))
+    }
+
+    @Test
+    fun theTwoSidesOfADoorAreNotBesideEachOther() {
+        // The sides of the gate can be walked between in the test world, but there is a door in the way. So the link between
+        // the outer leaves is made, even though the inner leaves are linked, instead of being taken for a second link of the same walk.
+        val nodes = listOf(node("in1", 0, 0), node("in2", 1, 0), node("out1", 0, 1), node("out2", 1, 1))
+        val doors = DoorCrossings(listOf(Pair(Position(0, 0), Position(0, 1)), Pair(Position(1, 0), Position(1, 1))))
+        val links = WalkLinker({ a, b -> if ((a.y == 0) != (b.y == 0)) null else pathCost(a, b) }, doors = doors).link(nodes)
+
+        assertEquals(setOf(setOf("in1", "in2"), setOf("out1", "out2")), links.map { setOf(it.from, it.to) }.toSet())
     }
 
     @Test

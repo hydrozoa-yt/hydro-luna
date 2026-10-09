@@ -62,6 +62,17 @@ object WebWalkTerrain {
     private const val WATER_OVERLAY = 6
 
     /**
+     * The colour of lava, which is a texture in the client.
+     */
+    private const val LAVA = 0xc2410c
+
+    /**
+     * The ids of the overlays that are lava. The first is the lava floor, which is a texture, and the second is the invisible
+     * floor that the lava of the Wilderness is laid over with objects.
+     */
+    private val LAVA_OVERLAYS = setOf(19, 152)
+
+    /**
      * How much the colours are darkened by, so that what is drawn over them can be seen.
      */
     private const val DIM = 0.85
@@ -369,7 +380,8 @@ object WebWalkTerrain {
             for (tx in BLEND until width - BLEND) {
                 val tile = tiles[ty * width + tx] ?: continue
                 val underlay = tile.underlay
-                val overlay = tile.overlay
+                // The map data reads the id of an overlay as a signed byte, but the ids go up to 255.
+                val overlay = tile.overlay and 0xff
                 if (underlay <= 0 && overlay <= 0) {
                     continue
                 }
@@ -394,11 +406,12 @@ object WebWalkTerrain {
                     continue
                 }
                 val floor = floors.getOrNull(overlay - 1)
-                if (floor != null && floor.isInvisible) {
+                if (floor != null && floor.isInvisible && overlay !in LAVA_OVERLAYS) {
                     continue
                 }
                 val colour = dim(when {
                     overlay == WATER_OVERLAY -> WATER
+                    overlay in LAVA_OVERLAYS -> LAVA
                     floor == null || (floor.texture >= 0 && floor.rgb == 0) -> UNKNOWN_FLOOR
                     else -> floor.rgb
                 })

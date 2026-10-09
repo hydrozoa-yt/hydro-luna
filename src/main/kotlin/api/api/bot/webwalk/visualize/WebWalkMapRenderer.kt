@@ -94,6 +94,16 @@ object WebWalkMapRenderer {
                             NodeKind.FAIRY_RING to Color(0, 230, 118))
 
     /**
+     * The width of an edge, in pixels, whatever the scale is, so that a map that is zoomed in on shows the same lines.
+     */
+    private const val LINE_WIDTH = 1f
+
+    /**
+     * The size of a node, in pixels, whatever the scale is. The arrowheads and the rings of edges that leave the plane follow it.
+     */
+    private const val DOT_SIZE = 4.8
+
+    /**
      * The colour of walls.
      */
     private val WALL = Color.WHITE
@@ -181,8 +191,8 @@ object WebWalkMapRenderer {
         val drawn = HashSet<Pair<String, String>>()
         val oneWay = graph.edges.map { it.from to it.to }.toHashSet()
         val counts = HashMap<EdgeType, Int>()
-        val lineWidth = max(1f, scale / 3f)
-        val dot = max(3.0, scale * 1.6)
+        val lineWidth = LINE_WIDTH
+        val dot = DOT_SIZE
 
         // The walks go under the rest, so that the doors and ladders on them can be seen.
         for (edge in graph.edges.sortedBy { if (it.type == EdgeType.WALK) 0 else 1 }) {

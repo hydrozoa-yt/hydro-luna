@@ -107,7 +107,8 @@ tasks.register<JavaExec>("generateWebWalk") {
 // Draws the bot web-walker's data (everything in data/game/bots/webwalk) over the terrain of the cache and writes it to a
 // PNG, to get a quick idea of what the web looks like. Properties, all optional: -Pplane=0, -Pscale=3 (pixels per tile),
 // -Pbounds=minX,minY,maxX,maxY (or "auto" to fit the nodes of the plane; the default is the surface of the world) and
-// -Pout=build/webwalk/webwalk-map.png.
+// -Pout=build/webwalk/webwalk-map.png. The scale only sizes the terrain, so a small area at a large scale (for instance
+// -Pbounds=3190,3180,3260,3250 -Pscale=15) shows the same nodes and edges, just with more room around them.
 tasks.register<JavaExec>("renderWebWalkMap") {
     group = "luna"
     description = "Draws the web-walker graph over the world map as a PNG."

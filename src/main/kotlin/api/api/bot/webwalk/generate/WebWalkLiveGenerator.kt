@@ -451,6 +451,7 @@ object WebWalkLiveGenerator {
         val waypoints = gathered.waypoints.filter { it.id in keptIds } + manual
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
+
         return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.walkGraph(waypoints, links))
     }
 
