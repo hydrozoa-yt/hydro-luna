@@ -34,6 +34,11 @@ class DoorCrossings(steps: Iterable<Pair<Position, Position>>) {
     private val crossings: Set<Pair<Position, Position>> = steps.flatMap { listOf(it, Pair(it.second, it.first)) }.toHashSet()
 
     /**
+     * Determines if two positions are the tiles on either side of a door, in either order.
+     */
+    fun isCrossing(a: Position, b: Position): Boolean = Pair(a, b) in crossings
+
+    /**
      * Determines if a route goes through a door.
      *
      * @param start Where the route starts.

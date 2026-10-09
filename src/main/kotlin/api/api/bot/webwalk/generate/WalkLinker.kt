@@ -1,6 +1,7 @@
 package api.bot.webwalk.generate
 
 import api.bot.webwalk.model.WebWalkNode
+import api.bot.webwalk.plan.DoorCrossings
 import io.luna.game.model.Position
 
 /**
@@ -18,6 +19,8 @@ import io.luna.game.model.Position
  * @param nearRadius How far, in tiles, the nodes that are linked at first may be.
  * @param farRadius How far, in tiles, nodes in other groups are looked for when joining the groups.
  * @param joinAttempts How many times a pair of groups is tried before giving up on joining them.
+ * @param doors The doors of the graph. The tiles on either side of one are already connected by the door, so they are not
+ * linked by a walk, which would only be a way around the door. They count as linked for the nodes that they are.
  *
  * @author Hydrozoa
  */
@@ -25,7 +28,8 @@ class WalkLinker(private val pathCost: (Position, Position) -> Int?,
                  private val neighbours: Int = 5,
                  private val nearRadius: Int = 40,
                  private val farRadius: Int = 400,
-                 private val joinAttempts: Int = 3) {
+                 private val joinAttempts: Int = 3,
+                 private val doors: DoorCrossings? = null) {
 
     companion object {
 
@@ -96,6 +100,10 @@ class WalkLinker(private val pathCost: (Position, Position) -> Int?,
             val key = if (a < b) Pair(a, b) else Pair(b, a)
             if (!attempted.add(key)) {
                 return false
+            }
+            if (doors != null && doors.isCrossing(sorted[a].position, sorted[b].position)) {
+                groups.union(a, b)
+                return true
             }
             val cost = pathCost(sorted[a].position, sorted[b].position) ?: return false
             links += GeneratedLink(sorted[a].id, sorted[b].id, cost)

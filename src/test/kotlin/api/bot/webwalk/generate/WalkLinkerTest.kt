@@ -2,6 +2,7 @@ package api.bot.webwalk.generate
 
 import api.bot.webwalk.model.NodeKind
 import api.bot.webwalk.model.WebWalkNode
+import api.bot.webwalk.plan.DoorCrossings
 import io.luna.game.model.Position
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -99,6 +100,21 @@ class WalkLinkerTest {
 
         val pairs = tried.map { setOf(it.first, it.second) }
         assertEquals(pairs.size, pairs.toSet().size)
+    }
+
+    @Test
+    fun theTwoSidesOfADoorAreNotLinkedAndCountAsLinked() {
+        val tried = ArrayList<Set<Int>>()
+        val nodes = listOf(node("a", 10), node("b", 11), node("c", 14))
+        val doors = DoorCrossings(listOf(Pair(Position(10, 0), Position(11, 0))))
+        val links = WalkLinker({ a, b ->
+            tried += setOf(a.x, b.x)
+            pathCost(a, b)
+        }, neighbours = 1, doors = doors).link(nodes)
+
+        // The door is the one neighbour of a, so it only gets a link from c, and the walk between the sides is never searched for.
+        assertTrue(tried.none { it == setOf(10, 11) })
+        assertEquals(setOf(setOf("a", "c"), setOf("b", "c")), links.map { setOf(it.from, it.to) }.toSet())
     }
 
     @Test

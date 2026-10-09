@@ -81,7 +81,7 @@ object WebWalkLiveGenerator {
      * cells next to each other are usually about [SCATTER_CELL_SIZE] tiles apart, and this leaves room for a few that are farther
      * off, but not for the cells that are skipped. Every walk is well inside the range of [RoutePathfinder].
      */
-    private const val NEAR_LINK_RADIUS = 20
+    private const val NEAR_LINK_RADIUS = 25
 
     /**
      * The time of a teleport spell, in ticks: the cast is five ticks long (see `Magic.regularStyle`).
@@ -397,7 +397,8 @@ object WebWalkLiveGenerator {
 
         val graph = WebWalkLoader.fromSources(sources)
         val collision = world.collisionManager
-        val estimator = PathfinderWalkEstimator(collision, longRange = false, doors = DoorCrossings.of(graph))
+        val doorCrossings = DoorCrossings.of(graph)
+        val estimator = PathfinderWalkEstimator(collision, longRange = false, doors = doorCrossings)
 
         // Which nodes can be walked between is found once for all of them, so the pathfinder is only asked about the ones that
         // can. Otherwise every search for a node that can't be reached would cover everything that can.
@@ -423,7 +424,7 @@ object WebWalkLiveGenerator {
         var links: List<GeneratedLink>
         var isolated = 0
         while (true) {
-            links = WalkLinker(pathfinderCost, nearRadius = NEAR_LINK_RADIUS, farRadius = NEAR_LINK_RADIUS)
+            links = WalkLinker(pathfinderCost, nearRadius = NEAR_LINK_RADIUS, farRadius = NEAR_LINK_RADIUS, doors = doorCrossings)
                 .link(kept) { componentById.getValue(it.id) }
             val byId = kept.associateBy { it.id }
             val inRange = HashSet<String>()
