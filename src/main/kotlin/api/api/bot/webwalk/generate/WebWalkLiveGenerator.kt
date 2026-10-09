@@ -77,11 +77,11 @@ object WebWalkLiveGenerator {
     private const val SCATTER_CELL_SIZE = 16
 
     /**
-     * How far apart, in tiles, nodes may be to be linked. Waypoints of cells next to each other are at most 31 tiles apart, so
-     * this leaves room for some of the cells that are skipped, and keeps every walk well inside the range of
-     * [RoutePathfinder].
+     * How far apart, in tiles, nodes may be to be linked. Scattered waypoints are near the centres of their cells, so waypoints of
+     * cells next to each other are usually about [SCATTER_CELL_SIZE] tiles apart, and this leaves room for a few that are farther
+     * off, but not for the cells that are skipped. Every walk is well inside the range of [RoutePathfinder].
      */
-    private const val NEAR_LINK_RADIUS = 40
+    private const val NEAR_LINK_RADIUS = 20
 
     /**
      * The time of a teleport spell, in ticks: the cast is five ticks long (see `Magic.regularStyle`).
@@ -139,9 +139,10 @@ object WebWalkLiveGenerator {
     /**
      * Reads the world. Must be called on the game thread.
      *
+     * @param directory The directory of the other files, which is `data/game/bots/webwalk`.
      * @return The ladders, stairs, trapdoors and waypoints.
      */
-    fun gather(): Gathered {
+    fun gather(directory: Path): Gathered {
         val report = GenerationReport()
         val climbs = ArrayList<GeneratedObstacle>()
         val trapdoors = HashMap<Int, Trapdoor>()
@@ -160,7 +161,7 @@ object WebWalkLiveGenerator {
         }
         report.count("climbs", climbs.size)
         val waypoints = waypoints(report)
-        return Gathered(climbs, waypoints + scatter(waypoints, report), teleports(report), report)
+        return Gathered(climbs, waypoints + scatter(waypoints + manualWaypoints(directory), report), teleports(report), report)
     }
 
     /**
@@ -300,8 +301,21 @@ object WebWalkLiveGenerator {
         LadderDestination.climbingTiles(obj).sortedWith(compareBy({ it.z }, { it.x }, { it.y }))
 
     /**
+     * Reads the waypoints of `waypoints_manual.json`, which [finish] copies into the graph as they are, so that [scatter] can leave
+     * the cells that they are in alone. There are none if the file doesn't exist.
+     */
+    private fun manualWaypoints(directory: Path): List<GeneratedWaypoint> {
+        val path = directory.resolve(WebWalkLoader.WAYPOINTS_MANUAL)
+        if (!Files.exists(path)) {
+            return emptyList()
+        }
+        return WebWalkLoader.fromSources(mapOf(WebWalkLoader.WAYPOINTS_MANUAL to Files.readString(path))).nodes.values
+            .filter { it.kind == NodeKind.WAYPOINT }.map { GeneratedWaypoint(it.id, it.position, it.tags) }
+    }
+
+    /**
      * Spreads waypoints over the overworld, which is the ground floor above the dungeons, so that no walk of the graph is longer
-     * than the range of the route pathfinder. Cells that already have a waypoint are left alone.
+     * than the range of the route pathfinder. Cells that already have a waypoint, which [waypoints] are, are left alone.
      */
     private fun scatter(waypoints: List<GeneratedWaypoint>, report: GenerationReport): List<GeneratedWaypoint> {
         val table = ctx.cache.mapIndexTable
@@ -523,7 +537,7 @@ object WebWalkGenerationRunner {
         fun say(line: String) = logger.info("[webwalk] {}", line)
 
         val gathered = try {
-            WebWalkLiveGenerator.gather()
+            WebWalkLiveGenerator.gather(DIRECTORY)
         } catch (e: Exception) {
             logger.error("Could not gather the web-walker data!", e)
             System.exit(1)

@@ -7,7 +7,8 @@ import java.util.Random
  * Spreads waypoints over an area, so that no tile of it is far from a node of the web-walker graph.
  *
  * The area is divided into square cells, and each cell gets one waypoint at a random tile of its own, if it has a tile that can
- * be stood on. Two waypoints of neighbouring cells are never farther apart than twice the size of a cell, so the size of a cell
+ * be stood on. The tile is looked for around the centre of the cell, and farther from it with every tile that can't be stood
+ * on, up to the edges of the cell. Two waypoints of neighbouring cells are never farther apart than twice the size of a cell, so the size of a cell
  * decides how far the walks of the graph are, which the pathfinder that does them has a range for.
  *
  * The tiles are random, but they are the same every time for the same seed: each cell draws from a generator of its own,
@@ -23,7 +24,8 @@ object ScatterWaypoints {
     const val TAG = "scatter"
 
     /**
-     * How many random tiles are tried in a cell before it is given up on.
+     * How many random tiles are tried in a cell before it is given up on. The first are within a quarter of the cell's size from its
+     * centre, and the last are anywhere in the cell.
      */
     private const val TRIES = 12
 
@@ -52,9 +54,13 @@ object ScatterWaypoints {
                     continue
                 }
                 val random = Random((seed * 1_000_003L + cellX * 73_856_093L) xor (cellY * 19_349_663L))
+                val centreX = cellX * cellSize + cellSize / 2
+                val centreY = cellY * cellSize + cellSize / 2
                 for (attempt in 0 until TRIES) {
-                    val x = cellX * cellSize + random.nextInt(cellSize)
-                    val y = cellY * cellSize + random.nextInt(cellSize)
+                    // The tiles that are tried start close to the centre, and spread out towards the edges of the cell.
+                    val spread = cellSize / 4 + cellSize / 4 * attempt / (TRIES - 1)
+                    val x = (centreX + random.nextInt(spread * 2 + 1) - spread).coerceIn(cellX * cellSize, (cellX + 1) * cellSize - 1)
+                    val y = (centreY + random.nextInt(spread * 2 + 1) - spread).coerceIn(cellY * cellSize, (cellY + 1) * cellSize - 1)
                     if (x < minX || x > maxX || y < minY || y > maxY) {
                         continue
                     }

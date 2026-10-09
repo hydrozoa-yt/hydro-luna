@@ -37,10 +37,20 @@ class ScatterWaypointsTest {
     }
 
     @Test
-    fun waypointsAreSpreadRandomlyWithinTheirCells() {
+    fun waypointsAreSpreadRandomlyAroundTheCentresOfTheirCells() {
         val offsets = scatter().map { Pair(it.pos.x % 24, it.pos.y % 24) }.toSet()
 
         assertTrue(offsets.size > 50, "The waypoints are all in the same place of their cells.")
+        // Every tile of the cell can be stood on, so the first try is the one that is used: within a quarter of a cell from the centre.
+        assertTrue(offsets.all { (x, y) -> x in 6..18 && y in 6..18 }, "The waypoints are not close to the centres of their cells.")
+    }
+
+    @Test
+    fun waypointsFarFromTheCentreAreUsedWhenTheCentreCantBeStoodOn() {
+        val waypoints = scatter { it.x % 24 !in 4..19 || it.y % 24 !in 4..19 }
+
+        assertTrue(waypoints.size > 50)
+        assertTrue(waypoints.all { it.pos.x % 24 !in 4..19 || it.pos.y % 24 !in 4..19 })
     }
 
     @Test

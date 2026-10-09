@@ -165,6 +165,18 @@ object WebWalkMapRenderer {
         fun py(p: Position) = (bounds.maxY - p.y) * scale + centre
         fun visible(p: Position) = p.z == plane && bounds.contains(p)
 
+        // TEMPORARY: the 16x16 cells of the scatter step, to see how it places its waypoints.
+        g.color = Color(0, 0, 0, 150)
+        g.stroke = BasicStroke(1f)
+        for (x in Math.ceilDiv(bounds.minX, 16) * 16..bounds.maxX step 16) {
+            val line = (x - bounds.minX) * scale
+            g.drawLine(line, 0, line, image.height)
+        }
+        for (y in Math.ceilDiv(bounds.minY, 16) * 16..bounds.maxY step 16) {
+            val line = (bounds.maxY - y + 1) * scale
+            g.drawLine(0, line, image.width, line)
+        }
+
         // An edge and its reverse are drawn once.
         val drawn = HashSet<Pair<String, String>>()
         val oneWay = graph.edges.map { it.from to it.to }.toHashSet()
