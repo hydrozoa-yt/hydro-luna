@@ -39,18 +39,18 @@ data class GeneratedObstacle(val type: EdgeType,
                              val option: String? = null)
 
 /**
- * A hub of `hubs.jsonc` made by the generator.
+ * A waypoint of `walk_graph.jsonc` made by the generator.
  *
- * @property id The id of the hub.
- * @property pos The position of the hub.
- * @property tags The labels of the hub.
+ * @property id The id of the waypoint.
+ * @property pos The position of the waypoint.
+ * @property tags The labels of the waypoint.
  *
  * @author Hydrozoa
  */
-data class GeneratedHub(val id: String, val pos: Position, val tags: Set<String> = emptySet())
+data class GeneratedWaypoint(val id: String, val pos: Position, val tags: Set<String> = emptySet())
 
 /**
- * A walk edge of `hubs.jsonc` made by the generator, which is travelled both ways.
+ * A walk edge of `walk_graph.jsonc` made by the generator, which is travelled both ways.
  *
  * @property from The id of one node.
  * @property to The id of the other node.
@@ -172,55 +172,55 @@ object DoorObstacles {
 }
 
 /**
- * A place that should become a hub, before it has been moved onto a tile that can be stood on.
+ * A place that should become a waypoint, before it has been moved onto a tile that can be stood on.
  *
- * @property id The id of the hub.
+ * @property id The id of the waypoint.
  * @property position Where the place is.
- * @property tags The labels of the hub.
+ * @property tags The labels of the waypoint.
  *
  * @author Hydrozoa
  */
-data class HubSeed(val id: String, val position: Position, val tags: Set<String> = emptySet())
+data class WaypointSeed(val id: String, val position: Position, val tags: Set<String> = emptySet())
 
 /**
- * Makes hubs out of known places.
+ * Makes waypoints out of known places.
  *
  * @author Hydrozoa
  */
-object HubSeeds {
+object WaypointSeeds {
 
     /**
-     * Makes a hub of every seed, after moving it to a tile that can be stood on.
+     * Makes a waypoint of every seed, after moving it to a tile that can be stood on.
      *
      * Seeds that can't be moved to such a tile are left out and reported. A seed that lands on the tile of an earlier one
-     * is left out too, but its tags are added to that hub.
+     * is left out too, but its tags are added to that waypoint.
      *
      * @param seeds The places, in the order that they win ties.
      * @param snap Finds the tile to use for a position, or `null` if there is none.
      * @param report Where the left out seeds are reported.
-     * @return The hubs, which are not sorted.
+     * @return The waypoints, which are not sorted.
      */
-    fun generate(seeds: Iterable<HubSeed>, snap: (Position) -> Position?, report: GenerationReport): List<GeneratedHub> {
-        val byPosition = LinkedHashMap<Position, GeneratedHub>()
+    fun generate(seeds: Iterable<WaypointSeed>, snap: (Position) -> Position?, report: GenerationReport): List<GeneratedWaypoint> {
+        val byPosition = LinkedHashMap<Position, GeneratedWaypoint>()
         val ids = HashSet<String>()
         for (seed in seeds) {
             val position = snap(seed.position)
             if (position == null) {
-                report.skipped += "hub ${seed.id} at ${DoorObstacles.describe(seed.position)}: no tile to stand on nearby"
+                report.skipped += "waypoint ${seed.id} at ${DoorObstacles.describe(seed.position)}: no tile to stand on nearby"
                 continue
             }
             if (!ids.add(seed.id)) {
-                report.skipped += "hub ${seed.id}: duplicate id"
+                report.skipped += "waypoint ${seed.id}: duplicate id"
                 continue
             }
             val existing = byPosition[position]
             if (existing != null) {
                 byPosition[position] = existing.copy(tags = existing.tags + seed.tags)
-                report.skipped += "hub ${seed.id} at ${DoorObstacles.describe(position)}: same tile as ${existing.id}"
+                report.skipped += "waypoint ${seed.id} at ${DoorObstacles.describe(position)}: same tile as ${existing.id}"
                 continue
             }
-            byPosition[position] = GeneratedHub(seed.id, position, seed.tags)
-            report.count("hubs")
+            byPosition[position] = GeneratedWaypoint(seed.id, position, seed.tags)
+            report.count("waypoints")
         }
         return byPosition.values.toList()
     }
@@ -291,19 +291,19 @@ object WebWalkWriter {
     }
 
     /**
-     * Writes `hubs.jsonc`.
+     * Writes `walk_graph.jsonc`.
      */
-    fun hubs(hubs: Collection<GeneratedHub>, links: Collection<GeneratedLink>): String {
-        val hubLines = hubs.sortedBy { it.id }.map { hub ->
-            val tags = if (hub.tags.isEmpty()) "" else
-                ", \"tags\": [" + hub.tags.sorted().joinToString(", ") { quote(it) } + "]"
-            "{ \"id\": ${quote(hub.id)}, \"pos\": ${position(hub.pos)}$tags }"
+    fun walkGraph(waypoints: Collection<GeneratedWaypoint>, links: Collection<GeneratedLink>): String {
+        val waypointLines = waypoints.sortedBy { it.id }.map { waypoint ->
+            val tags = if (waypoint.tags.isEmpty()) "" else
+                ", \"tags\": [" + waypoint.tags.sorted().joinToString(", ") { quote(it) } + "]"
+            "{ \"id\": ${quote(waypoint.id)}, \"pos\": ${position(waypoint.pos)}$tags }"
         }
         val linkLines = links.map { if (it.from <= it.to) it else GeneratedLink(it.to, it.from, it.cost) }
             .distinct().sortedWith(compareBy({ it.from }, { it.to })).map {
                 "{ \"from\": ${quote(it.from)}, \"to\": ${quote(it.to)}, \"cost\": ${it.cost} }"
             }
-        return "{\n  \"hubs\": ${lines(hubLines, "[", "]", "  ")},\n  \"edges\": ${lines(linkLines, "[", "]", "  ")}\n}\n"
+        return "{\n  \"waypoints\": ${lines(waypointLines, "[", "]", "  ")},\n  \"edges\": ${lines(linkLines, "[", "]", "  ")}\n}\n"
     }
 
     /**

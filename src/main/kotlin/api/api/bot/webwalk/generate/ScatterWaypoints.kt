@@ -4,10 +4,10 @@ import io.luna.game.model.Position
 import java.util.Random
 
 /**
- * Spreads hubs over an area, so that no tile of it is far from a node of the web-walker graph.
+ * Spreads waypoints over an area, so that no tile of it is far from a node of the web-walker graph.
  *
- * The area is divided into square cells, and each cell gets one hub at a random tile of its own, if it has a tile that can
- * be stood on. Two hubs of neighbouring cells are never farther apart than twice the size of a cell, so the size of a cell
+ * The area is divided into square cells, and each cell gets one waypoint at a random tile of its own, if it has a tile that can
+ * be stood on. Two waypoints of neighbouring cells are never farther apart than twice the size of a cell, so the size of a cell
  * decides how far the walks of the graph are, which the pathfinder that does them has a range for.
  *
  * The tiles are random, but they are the same every time for the same seed: each cell draws from a generator of its own,
@@ -15,10 +15,10 @@ import java.util.Random
  *
  * @author Hydrozoa
  */
-object ScatterHubs {
+object ScatterWaypoints {
 
     /**
-     * The tag of every hub made here.
+     * The tag of every waypoint made here.
      */
     const val TAG = "scatter"
 
@@ -28,24 +28,24 @@ object ScatterHubs {
     private const val TRIES = 12
 
     /**
-     * Makes the hubs of an area.
+     * Makes the waypoints of an area.
      *
      * @param seed The seed of the random tiles.
-     * @param cellSize The width and length of a cell, in tiles. Hubs of cells next to each other are at most
+     * @param cellSize The width and length of a cell, in tiles. Waypoints of cells next to each other are at most
      * `2 * cellSize - 1` tiles apart.
      * @param minX The smallest x of the area.
      * @param minY The smallest y of the area.
      * @param maxX The largest x of the area.
      * @param maxY The largest y of the area.
-     * @param plane The plane of the hubs.
+     * @param plane The plane of the waypoints.
      * @param occupied The cells that already have a node and are left empty, written as `x / cellSize` and `y / cellSize`.
      * @param standable Determines if a tile can be stood on, including that it is in the area that is wanted.
-     * @return The hubs, which are not sorted. The id of a hub is `scatter_<cell x>_<cell y>`.
+     * @return The waypoints, which are not sorted. The id of a waypoint is `scatter_<cell x>_<cell y>`.
      */
     fun generate(seed: Long, cellSize: Int, minX: Int, minY: Int, maxX: Int, maxY: Int, plane: Int,
-                 occupied: Set<Pair<Int, Int>>, standable: (Position) -> Boolean): List<GeneratedHub> {
+                 occupied: Set<Pair<Int, Int>>, standable: (Position) -> Boolean): List<GeneratedWaypoint> {
         require(cellSize > 0) { "The size of a cell must be positive." }
-        val hubs = ArrayList<GeneratedHub>()
+        val waypoints = ArrayList<GeneratedWaypoint>()
         for (cellX in minX / cellSize..maxX / cellSize) {
             for (cellY in minY / cellSize..maxY / cellSize) {
                 if (Pair(cellX, cellY) in occupied) {
@@ -60,12 +60,12 @@ object ScatterHubs {
                     }
                     val position = Position(x, y, plane)
                     if (standable(position)) {
-                        hubs += GeneratedHub("${TAG}_${cellX}_$cellY", position, setOf(TAG))
+                        waypoints += GeneratedWaypoint("${TAG}_${cellX}_$cellY", position, setOf(TAG))
                         break
                     }
                 }
             }
         }
-        return hubs
+        return waypoints
     }
 }

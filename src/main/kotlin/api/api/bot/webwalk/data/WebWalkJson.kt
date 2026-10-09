@@ -31,7 +31,7 @@ internal class DataErrors {
     /**
      * Records a problem.
      *
-     * @param where Where the problem is, such as `hubs.jsonc[3].pos`.
+     * @param where Where the problem is, such as `walk_graph.jsonc[3].pos`.
      * @param message What is wrong.
      */
     fun add(where: String, message: String) {

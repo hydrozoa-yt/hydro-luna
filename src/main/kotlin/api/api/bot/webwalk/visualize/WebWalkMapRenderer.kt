@@ -87,7 +87,7 @@ object WebWalkMapRenderer {
     /**
      * The colour of each kind of node.
      */
-    val NODE_COLORS = mapOf(NodeKind.HUB to Color(255, 255, 255),
+    val NODE_COLORS = mapOf(NodeKind.WAYPOINT to Color(255, 255, 255),
                             NodeKind.OBSTACLE to Color(30, 30, 30),
                             NodeKind.TELEPORT_DEST to Color(118, 255, 3),
                             NodeKind.SHIP_PORT to Color(41, 121, 255),

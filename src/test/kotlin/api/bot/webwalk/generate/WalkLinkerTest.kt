@@ -20,7 +20,7 @@ class WalkLinkerTest {
         if ((a.x < 500) != (b.x < 500)) null else (a.computeLongestDistance(b) + 1) / 2
     }
 
-    private fun node(id: String, x: Int, y: Int = 0, z: Int = 0) = WebWalkNode(id, Position(x, y, z), NodeKind.HUB)
+    private fun node(id: String, x: Int, y: Int = 0, z: Int = 0) = WebWalkNode(id, Position(x, y, z), NodeKind.WAYPOINT)
 
     /**
      * Finds the sets of node ids that the links connect.

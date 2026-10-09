@@ -2,7 +2,7 @@
 // Last rebuilt: 2026-10-08T16:13:07Z
 
 {
-  "hubs": [
+  "waypoints": [
     { "id": "bank_al_kharid_0", "pos": [3267, 3168, 0], "tags": ["bank"] },
     { "id": "bank_al_kharid_1", "pos": [3267, 3167, 0], "tags": ["bank"] },
     { "id": "bank_al_kharid_2", "pos": [3267, 3163, 0], "tags": ["bank"] },

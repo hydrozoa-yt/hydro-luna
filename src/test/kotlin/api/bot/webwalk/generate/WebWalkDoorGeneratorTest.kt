@@ -13,7 +13,7 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
- * Tests for [DoorObstacles], [HubSeeds], [WebWalkWriter] and [WebWalkDoorGenerator].
+ * Tests for [DoorObstacles], [WaypointSeeds], [WebWalkWriter] and [WebWalkDoorGenerator].
  *
  * @author Hydrozoa
  */
@@ -56,16 +56,16 @@ class WebWalkDoorGeneratorTest {
     }
 
     @Test
-    fun hubSeedsAreMovedOntoStandableTiles() {
+    fun waypointSeedsAreMovedOntoStandableTiles() {
         val report = GenerationReport()
-        val seeds = listOf(HubSeed("bank", Position(10, 10), setOf("bank")),
-                           HubSeed("lost", Position(50, 50)),
-                           HubSeed("town", Position(10, 11), setOf("town")),
-                           HubSeed("town", Position(30, 30)))
+        val seeds = listOf(WaypointSeed("bank", Position(10, 10), setOf("bank")),
+                           WaypointSeed("lost", Position(50, 50)),
+                           WaypointSeed("town", Position(10, 11), setOf("town")),
+                           WaypointSeed("town", Position(30, 30)))
         // The booth is moved to the tile next to it, which the town also lands on.
-        val hubs = HubSeeds.generate(seeds, { if (it.x == 50) null else Position(11, 11) }, report)
+        val waypoints = WaypointSeeds.generate(seeds, { if (it.x == 50) null else Position(11, 11) }, report)
 
-        assertEquals(listOf(GeneratedHub("bank", Position(11, 11), setOf("bank", "town"))), hubs)
+        assertEquals(listOf(GeneratedWaypoint("bank", Position(11, 11), setOf("bank", "town"))), waypoints)
         assertEquals(3, report.skipped.size)
     }
 
@@ -86,18 +86,18 @@ class WebWalkDoorGeneratorTest {
     }
 
     @Test
-    fun hubsAreWrittenAsALoadableFile() {
-        val text = WebWalkWriter.hubs(
-            listOf(GeneratedHub("b", Position(2, 2), setOf("town", "bank")), GeneratedHub("a", Position(1, 1))),
+    fun waypointsAreWrittenAsALoadableFile() {
+        val text = WebWalkWriter.walkGraph(
+            listOf(GeneratedWaypoint("b", Position(2, 2), setOf("town", "bank")), GeneratedWaypoint("a", Position(1, 1))),
             listOf(GeneratedLink("b", "a", 7), GeneratedLink("a", "b", 7)))
-        val graph = WebWalkLoader.fromSources(mapOf(WebWalkLoader.HUBS to text))
+        val graph = WebWalkLoader.fromSources(mapOf(WebWalkLoader.WALK_GRAPH to text))
 
         assertEquals(setOf("a", "b"), graph.nodes.keys)
         assertEquals(setOf("bank", "town"), graph.node("b")!!.tags)
         // The same link written twice, in either direction, is one link: two directed edges.
         assertEquals(2, graph.edges.size)
         assertEquals(7, graph.edgesFrom("a").single().cost)
-        assertEquals("{\n  \"hubs\": [],\n  \"edges\": []\n}\n", WebWalkWriter.hubs(emptyList(), emptyList()))
+        assertEquals("{\n  \"waypoints\": [],\n  \"edges\": []\n}\n", WebWalkWriter.walkGraph(emptyList(), emptyList()))
     }
 
     @Test
@@ -129,8 +129,8 @@ class WebWalkDoorGeneratorTest {
     fun filesWithAHeaderStillLoad() {
         val header = WebWalkWriter.header(Instant.now())
         val sources = mapOf(
-            WebWalkLoader.HUBS to header + WebWalkWriter.hubs(
-                listOf(GeneratedHub("a", Position(1, 1)), GeneratedHub("b", Position(2, 2))),
+            WebWalkLoader.WALK_GRAPH to header + WebWalkWriter.walkGraph(
+                listOf(GeneratedWaypoint("a", Position(1, 1)), GeneratedWaypoint("b", Position(2, 2))),
                 listOf(GeneratedLink("a", "b", 7))),
             WebWalkLoader.OBSTACLES to header + WebWalkWriter.obstacles(listOf(
                 GeneratedObstacle(EdgeType.DOOR, 1512, Position(5, 5, 1), Position(5, 5, 1), Position(6, 5, 1)))),

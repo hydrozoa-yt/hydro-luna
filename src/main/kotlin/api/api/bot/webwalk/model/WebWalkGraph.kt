@@ -12,7 +12,7 @@ enum class NodeKind {
     /**
      * A point the planner may route through, such as a town centre or a bank.
      */
-    HUB,
+    WAYPOINT,
 
     /**
      * A tile on either side of a door, gate, curtain, ladder, stair or trapdoor.

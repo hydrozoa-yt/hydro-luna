@@ -18,9 +18,9 @@ class WebWalkPlannerTest {
     /**
      * Makes a graph from the contents of the data files.
      */
-    private fun graph(hubs: String = """{ "hubs": [] }""", obstacles: String = "[]", climbs: String = "[]",
+    private fun graph(waypoints: String = """{ "waypoints": [] }""", obstacles: String = "[]", climbs: String = "[]",
                       teleports: String = "[]", ships: String = "[]", rings: String = "[]"): WebWalkGraph =
-        WebWalkLoader.fromSources(mapOf(WebWalkLoader.HUBS to hubs, WebWalkLoader.OBSTACLES to obstacles,
+        WebWalkLoader.fromSources(mapOf(WebWalkLoader.WALK_GRAPH to waypoints, WebWalkLoader.OBSTACLES to obstacles,
                                         WebWalkLoader.CLIMBS to climbs, WebWalkLoader.TELEPORTS to teleports,
                                         WebWalkLoader.SHIPS to ships, WebWalkLoader.FAIRY_RINGS to rings))
 
@@ -30,10 +30,10 @@ class WebWalkPlannerTest {
     private fun pos(x: Int, y: Int, z: Int = 0) = Position(x, y, z)
 
     /**
-     * Three hubs in a line, 100 tiles apart, which is beyond where a position is linked to a node, with edges of 20 ticks.
+     * Three waypoints in a line, 100 tiles apart, which is beyond where a position is linked to a node, with edges of 20 ticks.
      */
     private val line = """
-        { "hubs": [ { "id": "a", "pos": [100, 100] }, { "id": "b", "pos": [200, 100] }, { "id": "c", "pos": [300, 100] } ],
+        { "waypoints": [ { "id": "a", "pos": [100, 100] }, { "id": "b", "pos": [200, 100] }, { "id": "c", "pos": [300, 100] } ],
           "edges": [ { "from": "a", "to": "b", "cost": 20 }, { "from": "b", "to": "c", "cost": 20 } ] }
     """
 
@@ -79,13 +79,13 @@ class WebWalkPlannerTest {
 
     @Test
     fun theCheapestRouteIsTaken() {
-        val hubs = """
-            { "hubs": [ { "id": "a", "pos": [100, 100] }, { "id": "mid", "pos": [140, 100] },
+        val waypoints = """
+            { "waypoints": [ { "id": "a", "pos": [100, 100] }, { "id": "mid", "pos": [140, 100] },
                         { "id": "far", "pos": [140, 160] }, { "id": "z", "pos": [180, 100] } ],
               "edges": [ { "from": "a", "to": "mid", "cost": 20 }, { "from": "mid", "to": "z", "cost": 20 },
                          { "from": "a", "to": "far", "cost": 20 }, { "from": "far", "to": "z", "cost": 60 } ] }
         """
-        val plan = planner(graph(hubs)).plan(pos(100, 100), pos(180, 100), CapabilitySnapshot())!!
+        val plan = planner(graph(waypoints)).plan(pos(100, 100), pos(180, 100), CapabilitySnapshot())!!
 
         assertTrue(plan.legs.any { it.to == pos(140, 100) })
         assertFalse(plan.legs.any { it.to == pos(140, 160) })
@@ -95,7 +95,7 @@ class WebWalkPlannerTest {
      * A wall at x = 140, with a door in it and a long way around.
      */
     private val wall = """
-        { "hubs": [ { "id": "west", "pos": [100, 100] }, { "id": "east", "pos": [180, 100] },
+        { "waypoints": [ { "id": "west", "pos": [100, 100] }, { "id": "east", "pos": [180, 100] },
                     { "id": "north", "pos": [140, 180] } ],
           "edges": [ { "from": "west", "to": "north", "cost": 60 }, { "from": "north", "to": "east", "cost": 60 } ] }
     """
@@ -104,7 +104,7 @@ class WebWalkPlannerTest {
             "requirements": { "items": [ { "id": 1523 } ] } } ]
     """
     private val doorWithLink = """
-        { "hubs": [ { "id": "west", "pos": [100, 100] }, { "id": "east", "pos": [180, 100] },
+        { "waypoints": [ { "id": "west", "pos": [100, 100] }, { "id": "east", "pos": [180, 100] },
                     { "id": "north", "pos": [140, 180] } ],
           "edges": [ { "from": "west", "to": "north", "cost": 60 }, { "from": "north", "to": "east", "cost": 60 },
                      { "from": "west", "to": "o:139,100,0", "cost": 20 }, { "from": "o:140,100,0", "to": "east", "cost": 20 } ] }
@@ -134,8 +134,8 @@ class WebWalkPlannerTest {
             [ { "type": "LADDER", "object": 2113, "pos": [100, 101, 0], "from": [100, 100, 0], "to": [100, 100, 1],
                 "requirements": { "skills": { "mining": 60 } } } ]
         """
-        val hubs = """{ "hubs": [ { "id": "up", "pos": [100, 110, 1] } ], "edges": [ { "from": "up", "to": "o:100,100,1", "cost": 5 } ] }"""
-        val planner = planner(graph(hubs, climbs = climbs))
+        val waypoints = """{ "waypoints": [ { "id": "up", "pos": [100, 110, 1] } ], "edges": [ { "from": "up", "to": "o:100,100,1", "cost": 5 } ] }"""
+        val planner = planner(graph(waypoints, climbs = climbs))
 
         assertNull(planner.plan(pos(100, 99), pos(100, 110, 1), CapabilitySnapshot(skillLevels = mapOf(14 to 59))))
         val plan = planner.plan(pos(100, 99), pos(100, 110, 1), CapabilitySnapshot(skillLevels = mapOf(14 to 60)))!!
@@ -217,9 +217,9 @@ class WebWalkPlannerTest {
 
     @Test
     fun aBotInTheDeepWildernessWalksOutBeforeItTeleports() {
-        // Hubs from the safe edge of the wilderness (y 3519) deep into it. The teleport can't be used above level 20.
-        val hubs = """
-            { "hubs": [ { "id": "edge", "pos": [3000, 3500] }, { "id": "mid", "pos": [3000, 3560] },
+        // Waypoints from the safe edge of the wilderness (y 3519) deep into it. The teleport can't be used above level 20.
+        val waypoints = """
+            { "waypoints": [ { "id": "edge", "pos": [3000, 3500] }, { "id": "mid", "pos": [3000, 3560] },
                         { "id": "deep", "pos": [3000, 3700] } ],
               "edges": [ { "from": "deep", "to": "mid", "cost": 40 }, { "from": "mid", "to": "edge", "cost": 20 } ] }
         """
@@ -227,7 +227,7 @@ class WebWalkPlannerTest {
             [ { "id": "home", "kind": "SPELL", "key": "VARROCK", "dest": [3200, 3200], "cost": 5,
                 "requirements": { "maxWilderness": 20 } } ]
         """
-        val graph = graph(hubs, teleports = spells)
+        val graph = graph(waypoints, teleports = spells)
         val plan = planner(graph).plan(pos(3000, 3701), pos(3200, 3201),
                                        CapabilitySnapshot(usableTeleports = setOf("home")))!!
 
@@ -239,8 +239,8 @@ class WebWalkPlannerTest {
     /**
      * Two ways from the west to the east: a short one through the wilderness, and a longer one around it.
      */
-    private val wildernessHubs = """
-        { "hubs": [ { "id": "west", "pos": [3000, 3400] }, { "id": "east", "pos": [3100, 3400] },
+    private val wildernessWaypoints = """
+        { "waypoints": [ { "id": "west", "pos": [3000, 3400] }, { "id": "east", "pos": [3100, 3400] },
                     { "id": "wild", "pos": [3050, 3600] }, { "id": "around", "pos": [3050, 3300] } ],
           "edges": [ { "from": "west", "to": "wild", "cost": 25 }, { "from": "wild", "to": "east", "cost": 25 },
                      { "from": "west", "to": "around", "cost": 70 }, { "from": "around", "to": "east", "cost": 70 } ] }
@@ -248,7 +248,7 @@ class WebWalkPlannerTest {
 
     @Test
     fun theWildernessIsAvoidedWhenThereIsAnotherWay() {
-        val plan = planner(graph(wildernessHubs)).plan(pos(3000, 3401), pos(3100, 3401), CapabilitySnapshot())!!
+        val plan = planner(graph(wildernessWaypoints)).plan(pos(3000, 3401), pos(3100, 3401), CapabilitySnapshot())!!
 
         assertFalse(plan.legs.any { it.to == pos(3050, 3600) }, "Went through the wilderness: $plan")
         assertTrue(plan.legs.any { it.to == pos(3050, 3300) })
@@ -256,12 +256,12 @@ class WebWalkPlannerTest {
 
     @Test
     fun theWildernessIsUsedWhenThereIsNoOtherWay() {
-        val hubs = """
-            { "hubs": [ { "id": "west", "pos": [3000, 3400] }, { "id": "east", "pos": [3100, 3400] },
+        val waypoints = """
+            { "waypoints": [ { "id": "west", "pos": [3000, 3400] }, { "id": "east", "pos": [3100, 3400] },
                         { "id": "wild", "pos": [3050, 3600] } ],
               "edges": [ { "from": "west", "to": "wild", "cost": 25 }, { "from": "wild", "to": "east", "cost": 25 } ] }
         """
-        val plan = planner(graph(hubs)).plan(pos(3000, 3401), pos(3100, 3401), CapabilitySnapshot())
+        val plan = planner(graph(waypoints)).plan(pos(3000, 3401), pos(3100, 3401), CapabilitySnapshot())
 
         assertNotNull(plan)
         assertTrue(plan!!.legs.any { it.to == pos(3050, 3600) })
@@ -274,13 +274,13 @@ class WebWalkPlannerTest {
         val estimator = WalkEstimator { from, to ->
             if ((from.x < 120) != (to.x < 120)) null else StraightLineWalkEstimator.ticks(from, to)
         }
-        val hubs = """
-            { "hubs": [ { "id": "inside", "pos": [100, 100] }, { "id": "outside_near", "pos": [125, 100] },
+        val waypoints = """
+            { "waypoints": [ { "id": "inside", "pos": [100, 100] }, { "id": "outside_near", "pos": [125, 100] },
                         { "id": "gate", "pos": [118, 100] }, { "id": "outside_far", "pos": [160, 100] } ],
               "edges": [ { "from": "inside", "to": "gate", "cost": 9 }, { "from": "gate", "to": "outside_near", "cost": 5 },
                          { "from": "outside_near", "to": "outside_far", "cost": 18 } ] }
         """
-        val plan = planner(graph(hubs), estimator).plan(pos(121, 100), pos(100, 101), CapabilitySnapshot())
+        val plan = planner(graph(waypoints), estimator).plan(pos(121, 100), pos(100, 101), CapabilitySnapshot())
 
         // The nearest node to the start is outside_near, so it is linked, but the direct walk is not possible.
         assertNotNull(plan)
@@ -301,7 +301,7 @@ class WebWalkPlannerTest {
      * Two routes whose costs are nearly the same: 40 + 40 ticks against 41 + 41.
      */
     private val twoRoutes = """
-        { "hubs": [ { "id": "start", "pos": [100, 100] }, { "id": "north", "pos": [200, 160] },
+        { "waypoints": [ { "id": "start", "pos": [100, 100] }, { "id": "north", "pos": [200, 160] },
                     { "id": "south", "pos": [200, 40] }, { "id": "finish", "pos": [300, 100] } ],
           "edges": [ { "from": "start", "to": "north", "cost": 40 }, { "from": "north", "to": "finish", "cost": 40 },
                      { "from": "start", "to": "south", "cost": 41 }, { "from": "south", "to": "finish", "cost": 41 } ] }
@@ -320,13 +320,13 @@ class WebWalkPlannerTest {
 
     @Test
     fun routesTooMuchWorseAreNeverTaken() {
-        val hubs = """
-            { "hubs": [ { "id": "start", "pos": [100, 100] }, { "id": "north", "pos": [200, 160] },
+        val waypoints = """
+            { "waypoints": [ { "id": "start", "pos": [100, 100] }, { "id": "north", "pos": [200, 160] },
                         { "id": "south", "pos": [200, 40] }, { "id": "finish", "pos": [300, 100] } ],
               "edges": [ { "from": "start", "to": "north", "cost": 40 }, { "from": "north", "to": "finish", "cost": 40 },
                          { "from": "start", "to": "south", "cost": 80 }, { "from": "south", "to": "finish", "cost": 80 } ] }
         """
-        val planner = planner(graph(hubs))
+        val planner = planner(graph(waypoints))
         for (seed in 0 until 40) {
             val plan = planner.plan(pos(100, 101), pos(300, 101), CapabilitySnapshot(), 0.0, Random(seed.toLong()))!!
             assertTrue(plan.legs.any { it.to == pos(200, 160) })
@@ -386,7 +386,7 @@ class WebWalkPlannerTest {
 
     @Test
     fun tripsThatCostTheSameTakeTheFewestLegs() {
-        // The start is on a hub, so walking to it is free, and so is not bothering: both ways cost the same.
+        // The start is on a waypoint, so walking to it is free, and so is not bothering: both ways cost the same.
         val teleports = """
             [ { "id": "far_spell", "kind": "SPELL", "key": "FALADOR", "dest": [300, 100], "cost": 5 } ]
         """

@@ -23,9 +23,10 @@ import java.nio.file.Path
  * Every file is optional, and a missing file is the same as an empty one. All the files are read before anything is
  * reported, so [WebWalkDataException] lists every problem at once. These are the files, with their fields:
  *
- * - `hubs.jsonc` (generated) and `hubs_manual.json` (maintained by hand): an object with `hubs` (`id`, `pos`, optional
- *   `tags`) and `edges` (`from`, `to`, optional `cost`, `bidirectional`, `requirements`) that walk between nodes. The ids
- *   of the two files share one namespace, so a manual hub can't silently replace a generated one.
+ * - `walk_graph.jsonc` (generated) and `waypoints_manual.json` (maintained by hand): an object with `waypoints` (`id`,
+ *   `pos`, optional `tags`) and `edges` (`from`, `to`, optional `cost`, `bidirectional`, `requirements`) that walk
+ *   between nodes. The ids of the two files share one namespace, so a manual waypoint can't silently replace a generated
+ *   one.
  * - `obstacles.jsonc` (generated): closed doors, gates and curtains. `climbs.jsonc` (generated): ladders, stairs and
  *   trapdoors. Both have entries with a `type`, `object`,
  *   `pos`, `from` and `to`, and an optional `cost`, `bidirectional`, `option` and `requirements`.
@@ -47,14 +48,14 @@ import java.nio.file.Path
 object WebWalkLoader {
 
     /**
-     * The generated hubs, and the walk edges between them.
+     * The generated waypoints, and the walk edges between them.
      */
-    const val HUBS = "hubs.jsonc"
+    const val WALK_GRAPH = "walk_graph.jsonc"
 
     /**
-     * The hubs and walk edges that are maintained by hand.
+     * The waypoints and walk edges that are maintained by hand.
      */
-    const val HUBS_MANUAL = "hubs_manual.json"
+    const val WAYPOINTS_MANUAL = "waypoints_manual.json"
 
     /**
      * The generated obstacles.
@@ -89,7 +90,7 @@ object WebWalkLoader {
     /**
      * Every file that is loaded.
      */
-    val FILES = listOf(HUBS, HUBS_MANUAL, OBSTACLES, CLIMBS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
+    val FILES = listOf(WALK_GRAPH, WAYPOINTS_MANUAL, OBSTACLES, CLIMBS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
 
     /**
      * The logger instance.
@@ -205,8 +206,8 @@ object WebWalkLoader {
          * Reads every file and creates the graph.
          */
         fun build(): WebWalkGraph {
-            readHubs(HUBS)
-            readHubs(HUBS_MANUAL)
+            readWaypoints(WALK_GRAPH)
+            readWaypoints(WAYPOINTS_MANUAL)
             readObstacles()
             readTeleports()
             readShips()
@@ -305,17 +306,17 @@ object WebWalkLoader {
         }
 
         /**
-         * Reads a hubs file.
+         * Reads a waypoints file.
          */
-        fun readHubs(file: String) {
+        fun readWaypoints(file: String) {
             val root = root(file) ?: return
-            for (hub in root.objects("hubs")) {
-                val id = readId(hub)
-                val pos = hub.position("pos")
-                val tags = hub.strings("tags").toSet()
-                hub.finish()
+            for (waypoint in root.objects("waypoints")) {
+                val id = readId(waypoint)
+                val pos = waypoint.position("pos")
+                val tags = waypoint.strings("tags").toSet()
+                waypoint.finish()
                 if (id != null && pos != null) {
-                    addNode(hub.where, WebWalkNode(id, pos, NodeKind.HUB, tags))
+                    addNode(waypoint.where, WebWalkNode(id, pos, NodeKind.WAYPOINT, tags))
                 }
             }
             for (edge in root.objects("edges")) {

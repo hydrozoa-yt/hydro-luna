@@ -67,9 +67,9 @@ class WalkableComponentsTest {
     @Test
     fun linkerOnlyTriesNodesInTheSameComponent() {
         val tried = ArrayList<Pair<Int, Int>>()
-        val nodes = listOf(WebWalkNode("a", Position(1, 1), NodeKind.HUB),
-                           WebWalkNode("b", Position(5, 5), NodeKind.HUB),
-                           WebWalkNode("room", Position(16, 3), NodeKind.HUB))
+        val nodes = listOf(WebWalkNode("a", Position(1, 1), NodeKind.WAYPOINT),
+                           WebWalkNode("b", Position(5, 5), NodeKind.WAYPOINT),
+                           WebWalkNode("room", Position(16, 3), NodeKind.WAYPOINT))
         val labels = components.label(nodes.map { it.position })
         val byId = nodes.indices.associate { nodes[it].id to labels[it] }
 

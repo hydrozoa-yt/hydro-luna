@@ -26,7 +26,7 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
- * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `hubs.jsonc`. Everything is made in a
+ * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `walk_graph.jsonc`. Everything is made in a
  * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world. The files start
  * with a comment that says they are generated and when, see [WebWalkWriter.header].
  *
@@ -36,9 +36,9 @@ import java.time.Instant
  *   [Trapdoor] say that they do, which is what players get.
  * - The teleports of `teleports.jsonc` are the teleport spells, the destinations of the teleport jewellery, and the home
  *   teleport, so that they are never written out by hand.
- * - The hubs of `hubs.jsonc` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
+ * - The waypoints of `walk_graph.jsonc` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
  *   on.
- * - The walk edges of `hubs.jsonc` link every node of the graph (the ones from the files that are not generated here too)
+ * - The walk edges of `walk_graph.jsonc` link every node of the graph (the ones from the files that are not generated here too)
  *   with the cost of walking between them, according to the collision of the world.
  *
  * It runs in two steps. [gather] needs the game thread, because it reads the world as it is. [finish] only reads the
@@ -64,19 +64,19 @@ object WebWalkLiveGenerator {
     private const val SNAP_RADIUS = 4
 
     /**
-     * The seed of the scattered hubs, so that the same ones are made every time.
+     * The seed of the scattered waypoints, so that the same ones are made every time.
      */
     private const val SCATTER_SEED = 377L
 
     /**
-     * The width and length of the cells that get a scattered hub. Hubs of cells next to each other are less than twice this
+     * The width and length of the cells that get a scattered waypoint. Waypoints of cells next to each other are less than twice this
      * far apart, which has to be inside the range of [RoutePathfinder] (56 tiles), so that the walks between them are
      * found without a long range search.
      */
     private const val SCATTER_CELL_SIZE = 16
 
     /**
-     * How far apart, in tiles, nodes may be to be linked. Hubs of cells next to each other are at most 31 tiles apart, so
+     * How far apart, in tiles, nodes may be to be linked. Waypoints of cells next to each other are at most 31 tiles apart, so
      * this leaves room for some of the cells that are skipped, and keeps every walk well inside the range of
      * [RoutePathfinder].
      */
@@ -116,12 +116,12 @@ object WebWalkLiveGenerator {
      * What [gather] found.
      *
      * @property climbs The ladders, stairs and trapdoors.
-     * @property hubs The hubs.
+     * @property waypoints The waypoints.
      * @property teleports The teleports.
      * @property report What was made and what was left out.
      */
     class Gathered(val climbs: List<GeneratedObstacle>,
-                   val hubs: List<GeneratedHub>,
+                   val waypoints: List<GeneratedWaypoint>,
                    val teleports: List<GeneratedTeleport>,
                    val report: GenerationReport)
 
@@ -131,14 +131,14 @@ object WebWalkLiveGenerator {
      * @property obstacles The text of `obstacles.jsonc`.
      * @property climbs The text of `climbs.jsonc`.
      * @property teleports The text of `teleports.jsonc`.
-     * @property hubs The text of `hubs.jsonc`.
+     * @property walkGraph The text of `walk_graph.jsonc`.
      */
-    class Output(val obstacles: String, val climbs: String, val teleports: String, val hubs: String)
+    class Output(val obstacles: String, val climbs: String, val teleports: String, val walkGraph: String)
 
     /**
      * Reads the world. Must be called on the game thread.
      *
-     * @return The ladders, stairs, trapdoors and hubs.
+     * @return The ladders, stairs, trapdoors and waypoints.
      */
     fun gather(): Gathered {
         val report = GenerationReport()
@@ -158,8 +158,8 @@ object WebWalkLiveGenerator {
             }
         }
         report.count("climbs", climbs.size)
-        val hubs = hubs(report)
-        return Gathered(climbs, hubs + scatter(hubs, report), teleports(report), report)
+        val waypoints = waypoints(report)
+        return Gathered(climbs, waypoints + scatter(waypoints, report), teleports(report), report)
     }
 
     /**
@@ -299,40 +299,40 @@ object WebWalkLiveGenerator {
         LadderDestination.climbingTiles(obj).sortedWith(compareBy({ it.z }, { it.x }, { it.y }))
 
     /**
-     * Spreads hubs over the overworld, which is the ground floor above the dungeons, so that no walk of the graph is longer
-     * than the range of the route pathfinder. Cells that already have a hub are left alone.
+     * Spreads waypoints over the overworld, which is the ground floor above the dungeons, so that no walk of the graph is longer
+     * than the range of the route pathfinder. Cells that already have a waypoint are left alone.
      */
-    private fun scatter(hubs: List<GeneratedHub>, report: GenerationReport): List<GeneratedHub> {
+    private fun scatter(waypoints: List<GeneratedWaypoint>, report: GenerationReport): List<GeneratedWaypoint> {
         val table = ctx.cache.mapIndexTable
         val regions = table.allRegions.map { it.absPosition }.filter { it.y < LadderType.CELLAR_OFFSET }
         if (regions.isEmpty()) {
             return emptyList()
         }
-        val occupied = hubs.filter { it.pos.z == 0 }
+        val occupied = waypoints.filter { it.pos.z == 0 }
             .map { Pair(it.pos.x / SCATTER_CELL_SIZE, it.pos.y / SCATTER_CELL_SIZE) }.toSet()
-        val scattered = ScatterHubs.generate(SCATTER_SEED, SCATTER_CELL_SIZE,
+        val scattered = ScatterWaypoints.generate(SCATTER_SEED, SCATTER_CELL_SIZE,
                                              regions.minOf { it.x }, regions.minOf { it.y },
                                              regions.maxOf { it.x } + 63, regions.maxOf { it.y } + 63, 0, occupied) {
             table.indexTable.containsKey(it.region) && LadderDestination.canLand(it)
         }
-        report.count("scattered hubs", scattered.size)
+        report.count("scattered waypoints", scattered.size)
         return scattered
     }
 
     /**
-     * Makes the hubs of the zones, their banks and the sub-zones.
+     * Makes the waypoints of the zones, their banks and the sub-zones.
      */
-    private fun hubs(report: GenerationReport): List<GeneratedHub> {
-        val seeds = ArrayList<HubSeed>()
+    private fun waypoints(report: GenerationReport): List<GeneratedWaypoint> {
+        val seeds = ArrayList<WaypointSeed>()
         for (zone in Zone.entries) {
             val name = zone.name.lowercase()
-            seeds += HubSeed("zone_$name", zone.anchor, setOf("zone"))
-            zone.bankAnchors.forEachIndexed { index, bank -> seeds += HubSeed("bank_${name}_$index", bank, setOf("bank")) }
+            seeds += WaypointSeed("zone_$name", zone.anchor, setOf("zone"))
+            zone.bankAnchors.forEachIndexed { index, bank -> seeds += WaypointSeed("bank_${name}_$index", bank, setOf("bank")) }
         }
         for (subZone in SubZone.entries) {
-            seeds += HubSeed("subzone_${subZone.name.lowercase()}", subZone.inside, setOf("subzone"))
+            seeds += WaypointSeed("subzone_${subZone.name.lowercase()}", subZone.inside, setOf("subzone"))
         }
-        return HubSeeds.generate(seeds, ::standableNear, report)
+        return WaypointSeeds.generate(seeds, ::standableNear, report)
     }
 
     /**
@@ -360,7 +360,7 @@ object WebWalkLiveGenerator {
      *
      * @param gathered What [gather] found.
      * @param directory The directory of the other files, which is `data/game/bots/webwalk`.
-     * @return The text of `climbs.jsonc` and `hubs.jsonc`.
+     * @return The text of `climbs.jsonc` and `walk_graph.jsonc`.
      */
     fun finish(gathered: Gathered, directory: Path): Output {
         val sources = HashMap<String, String>()
@@ -378,7 +378,7 @@ object WebWalkLiveGenerator {
         sources[WebWalkLoader.CLIMBS] = climbsText
         val teleportsText = WebWalkWriter.teleports(gathered.teleports)
         sources[WebWalkLoader.TELEPORTS] = teleportsText
-        sources[WebWalkLoader.HUBS] = WebWalkWriter.hubs(gathered.hubs, emptyList())
+        sources[WebWalkLoader.WALK_GRAPH] = WebWalkWriter.walkGraph(gathered.waypoints, emptyList())
 
         val graph = WebWalkLoader.fromSources(sources)
         val collision = world.collisionManager
@@ -393,15 +393,15 @@ object WebWalkLiveGenerator {
         }.label(nodes.map { it.position })
         gathered.report.count("walkable areas", labels.toSet().size)
 
-        // A scattered hub in an area that has no other node can't be walked to from anywhere that matters, so it is left out.
-        val anchored = nodes.indices.filter { ScatterHubs.TAG !in nodes[it].tags }.map { labels[it] }.toSet()
-        val dropped = nodes.indices.filter { ScatterHubs.TAG in nodes[it].tags && labels[it] !in anchored }
+        // A scattered waypoint in an area that has no other node can't be walked to from anywhere that matters, so it is left out.
+        val anchored = nodes.indices.filter { ScatterWaypoints.TAG !in nodes[it].tags }.map { labels[it] }.toSet()
+        val dropped = nodes.indices.filter { ScatterWaypoints.TAG in nodes[it].tags && labels[it] !in anchored }
             .map { nodes[it].id }.toSet()
-        gathered.report.count("scattered hubs left out", dropped.size)
+        gathered.report.count("scattered waypoints left out", dropped.size)
         val componentById = nodes.indices.associate { nodes[it].id to labels[it] }
 
         // Nodes should be close together, so the walks between them stay inside the range of the route pathfinder. A
-        // scattered hub with no walk to a node in range is only in a pocket that long walks lead to, so it is left out too,
+        // scattered waypoint with no walk to a node in range is only in a pocket that long walks lead to, so it is left out too,
         // and the rest are linked again without it, until none are left that have to be.
         val pathfinderCost = estimator::ticks
         var kept = nodes.filter { it.id !in dropped }
@@ -419,19 +419,19 @@ object WebWalkLiveGenerator {
                     inRange += link.to
                 }
             }
-            val pruned = kept.filter { ScatterHubs.TAG in it.tags && it.id !in inRange }.map { it.id }.toSet()
+            val pruned = kept.filter { ScatterWaypoints.TAG in it.tags && it.id !in inRange }.map { it.id }.toSet()
             if (pruned.isEmpty()) {
                 break
             }
             isolated += pruned.size
             kept = kept.filter { it.id !in pruned }
         }
-        gathered.report.count("scattered hubs left out (nothing in range)", isolated)
+        gathered.report.count("scattered waypoints left out (nothing in range)", isolated)
         val keptIds = kept.map { it.id }.toSet()
-        val hubs = gathered.hubs.filter { it.id in keptIds }
+        val waypoints = gathered.waypoints.filter { it.id in keptIds }
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
-        return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.hubs(hubs, links))
+        return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.walkGraph(waypoints, links))
     }
 
     /**
@@ -447,7 +447,7 @@ object WebWalkLiveGenerator {
         Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), header + output.obstacles)
         Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), header + output.climbs)
         Files.writeString(directory.resolve(WebWalkLoader.TELEPORTS), header + output.teleports)
-        Files.writeString(directory.resolve(WebWalkLoader.HUBS), header + output.hubs)
+        Files.writeString(directory.resolve(WebWalkLoader.WALK_GRAPH), header + output.walkGraph)
     }
 
     /**
@@ -462,7 +462,7 @@ object WebWalkLiveGenerator {
         val expected = mapOf(WebWalkLoader.OBSTACLES to output.obstacles,
                              WebWalkLoader.CLIMBS to output.climbs,
                              WebWalkLoader.TELEPORTS to output.teleports,
-                             WebWalkLoader.HUBS to output.hubs)
+                             WebWalkLoader.WALK_GRAPH to output.walkGraph)
         val stale = ArrayList<String>()
         for ((file, text) in expected) {
             val path = directory.resolve(file)
@@ -524,7 +524,7 @@ object WebWalkGenerationRunner {
             System.exit(1)
             return
         }
-        say("Gathered ${gathered.climbs.size} climbs and ${gathered.hubs.size} hubs. Linking, which takes a while...")
+        say("Gathered ${gathered.climbs.size} climbs and ${gathered.waypoints.size} waypoints. Linking, which takes a while...")
 
         Thread({
             var failed = false
@@ -536,7 +536,7 @@ object WebWalkGenerationRunner {
                     say(if (stale.isEmpty()) "The generated files are up to date." else "Out of date: $stale")
                 } else {
                     WebWalkLiveGenerator.write(output, DIRECTORY)
-                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS}, ${WebWalkLoader.TELEPORTS} and ${WebWalkLoader.HUBS} to " +
+                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS}, ${WebWalkLoader.TELEPORTS} and ${WebWalkLoader.WALK_GRAPH} to " +
                                 "$DIRECTORY.")
                 }
             } catch (e: Throwable) {

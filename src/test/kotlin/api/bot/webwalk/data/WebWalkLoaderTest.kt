@@ -1,13 +1,13 @@
 package api.bot.webwalk.data
 
 import api.bot.webwalk.data.WebWalkLoader.FAIRY_RINGS
-import api.bot.webwalk.data.WebWalkLoader.HUBS
-import api.bot.webwalk.data.WebWalkLoader.HUBS_MANUAL
+import api.bot.webwalk.data.WebWalkLoader.WALK_GRAPH
+import api.bot.webwalk.data.WebWalkLoader.WAYPOINTS_MANUAL
 import api.bot.webwalk.data.WebWalkLoader.OBSTACLES
 import api.bot.webwalk.data.WebWalkLoader.OBSTACLE_OVERRIDES
 import api.bot.webwalk.data.WebWalkLoader.SHIPS
 import api.bot.webwalk.data.WebWalkLoader.TELEPORTS
-import api.bot.webwalk.generate.ScatterHubs
+import api.bot.webwalk.generate.ScatterWaypoints
 import api.bot.webwalk.model.EdgeAction
 import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.ItemRequirement
@@ -31,8 +31,8 @@ class WebWalkLoaderTest {
         return exception.problems
     }
 
-    private val hubs = """
-        { "hubs": [
+    private val waypoints = """
+        { "waypoints": [
             { "id": "lumbridge", "pos": [3222, 3218], "tags": ["town"] },
             { "id": "draynor", "pos": [3093, 3244, 0] }
           ],
@@ -54,17 +54,17 @@ class WebWalkLoaderTest {
 
     @Test
     fun emptyArraysAreAccepted() {
-        val graph = load(SHIPS to "[]", FAIRY_RINGS to "[]", HUBS to "[]", OBSTACLES to "[]", TELEPORTS to "  ")
+        val graph = load(SHIPS to "[]", FAIRY_RINGS to "[]", WALK_GRAPH to "[]", OBSTACLES to "[]", TELEPORTS to "  ")
         assertTrue(graph.nodes.isEmpty())
     }
 
     @Test
-    fun hubsAndTwoWayWalkEdges() {
-        val graph = load(HUBS to hubs)
+    fun waypointsAndTwoWayWalkEdges() {
+        val graph = load(WALK_GRAPH to waypoints)
         assertEquals(setOf("lumbridge", "draynor"), graph.nodes.keys)
         assertEquals(Position(3222, 3218, 0), graph.node("lumbridge")!!.position)
         assertEquals(setOf("town"), graph.node("lumbridge")!!.tags)
-        assertEquals(NodeKind.HUB, graph.node("draynor")!!.kind)
+        assertEquals(NodeKind.WAYPOINT, graph.node("draynor")!!.kind)
 
         assertEquals(2, graph.edges.size)
         val forward = graph.edgesFrom("lumbridge").single()
@@ -75,12 +75,12 @@ class WebWalkLoaderTest {
     }
 
     @Test
-    fun manualHubsCanBeLinkedToGeneratedHubs() {
+    fun manualWaypointsCanBeLinkedToGeneratedWaypoints() {
         val manual = """
-            { "hubs": [ { "id": "wizards_tower", "pos": [3109, 3167] } ],
+            { "waypoints": [ { "id": "wizards_tower", "pos": [3109, 3167] } ],
               "edges": [ { "from": "wizards_tower", "to": "draynor", "bidirectional": false } ] }
         """
-        val graph = load(HUBS to hubs, HUBS_MANUAL to manual)
+        val graph = load(WALK_GRAPH to waypoints, WAYPOINTS_MANUAL to manual)
         assertEquals(3, graph.nodes.size)
         assertEquals(1, graph.edgesFrom("wizards_tower").size)
         assertNull(graph.edgesFrom("wizards_tower").single().cost)
@@ -172,8 +172,8 @@ class WebWalkLoaderTest {
 
     @Test
     fun wildernessLevelIsComputedForNodes() {
-        val graph = load(HUBS to """
-            { "hubs": [ { "id": "edgeville", "pos": [3087, 3496] },
+        val graph = load(WALK_GRAPH to """
+            { "waypoints": [ { "id": "edgeville", "pos": [3087, 3496] },
                         { "id": "mage_bank", "pos": [3090, 3957] },
                         { "id": "level_one", "pos": [3090, 3523] } ] }
         """)
@@ -184,32 +184,32 @@ class WebWalkLoaderTest {
 
     @Test
     fun edgesToUnknownNodesAreReported() {
-        val found = problems(HUBS to """
-            { "hubs": [ { "id": "a", "pos": [1, 1] } ], "edges": [ { "from": "a", "to": "b" } ] }
+        val found = problems(WALK_GRAPH to """
+            { "waypoints": [ { "id": "a", "pos": [1, 1] } ], "edges": [ { "from": "a", "to": "b" } ] }
         """)
-        assertEquals(listOf("hubs.jsonc.edges[0]: 'to' refers to unknown node 'b'"), found)
+        assertEquals(listOf("walk_graph.jsonc.edges[0]: 'to' refers to unknown node 'b'"), found)
     }
 
     @Test
-    fun duplicateIdsAcrossHubFilesAreReported() {
-        val manual = """{ "hubs": [ { "id": "lumbridge", "pos": [1, 1] } ] }"""
-        val found = problems(HUBS to hubs, HUBS_MANUAL to manual)
-        assertEquals(listOf("hubs_manual.json.hubs[0]: duplicate node id 'lumbridge'"), found)
+    fun duplicateIdsAcrossWaypointFilesAreReported() {
+        val manual = """{ "waypoints": [ { "id": "lumbridge", "pos": [1, 1] } ] }"""
+        val found = problems(WALK_GRAPH to waypoints, WAYPOINTS_MANUAL to manual)
+        assertEquals(listOf("waypoints_manual.json.waypoints[0]: duplicate node id 'lumbridge'"), found)
     }
 
     @Test
     fun unknownFieldsAndBadTypesAreReported() {
-        val found = problems(HUBS to """
-            { "hubs": [ { "id": "a", "pos": [1, 1], "tagz": [] },
+        val found = problems(WALK_GRAPH to """
+            { "waypoints": [ { "id": "a", "pos": [1, 1], "tagz": [] },
                         { "id": "Bad Id", "pos": [1, 1] },
                         { "id": "c", "pos": [1, 1, 9] },
                         { "id": "d", "pos": "nope" } ] }
         """)
         assertEquals(4, found.size)
-        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[0].tagz: unknown field") })
-        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[1].id: must be lower case") })
-        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[2].pos: must have x and y") })
-        assertTrue(found.any { it.startsWith("hubs.jsonc.hubs[3].pos: must be an array") })
+        assertTrue(found.any { it.startsWith("walk_graph.jsonc.waypoints[0].tagz: unknown field") })
+        assertTrue(found.any { it.startsWith("walk_graph.jsonc.waypoints[1].id: must be lower case") })
+        assertTrue(found.any { it.startsWith("walk_graph.jsonc.waypoints[2].pos: must have x and y") })
+        assertTrue(found.any { it.startsWith("walk_graph.jsonc.waypoints[3].pos: must be an array") })
     }
 
     @Test
@@ -294,9 +294,9 @@ class WebWalkLoaderTest {
 
     @Test
     fun invalidJsonAndWrongRootsAreReported() {
-        val found = problems(HUBS to "{ \"hubs\": [ ", OBSTACLES to "{}", SHIPS to "[1]", TELEPORTS to "5")
+        val found = problems(WALK_GRAPH to "{ \"waypoints\": [ ", OBSTACLES to "{}", SHIPS to "[1]", TELEPORTS to "5")
         assertEquals(4, found.size)
-        assertTrue(found.any { it.startsWith("hubs.jsonc: invalid JSON") })
+        assertTrue(found.any { it.startsWith("walk_graph.jsonc: invalid JSON") })
         assertTrue(found.any { it.startsWith("obstacles.jsonc: must be an array") })
         assertTrue(found.any { it.startsWith("ships.json: must be an object") })
         assertTrue(found.any { it.startsWith("teleports.jsonc: must be an array") })
@@ -305,7 +305,7 @@ class WebWalkLoaderTest {
     @Test
     fun everyProblemIsReportedAtOnce() {
         val exception = assertThrows(WebWalkDataException::class.java) {
-            load(HUBS to """{ "hubs": [ { "id": "a" } ] }""", FAIRY_RINGS to """[ { "id": "b" } ]""")
+            load(WALK_GRAPH to """{ "waypoints": [ { "id": "a" } ] }""", FAIRY_RINGS to """[ { "id": "b" } ]""")
         }
         assertEquals(3, exception.problems.size)
         assertTrue(exception.message!!.startsWith("Invalid web-walker data (3 problems)"))
@@ -339,14 +339,14 @@ class WebWalkLoaderTest {
     }
 
     @Test
-    fun shippedScatterHubsAreConnectedAndCloseTogether() {
+    fun shippedScatterWaypointsAreConnectedAndCloseTogether() {
         val graph = WebWalkLoader.load(Path.of("data/game/bots/webwalk"))
-        val scatter = graph.nodes.values.filter { ScatterHubs.TAG in it.tags }
-        assertTrue(scatter.size > 1000, "Only ${scatter.size} scattered hubs.")
+        val scatter = graph.nodes.values.filter { ScatterWaypoints.TAG in it.tags }
+        assertTrue(scatter.size > 1000, "Only ${scatter.size} scattered waypoints.")
 
-        // Every scattered hub is walkable to one that is close, which is within the range of the route pathfinder.
+        // Every scattered waypoint is walkable to one that is close, which is within the range of the route pathfinder.
         val lonely = scatter.filter { node -> graph.edgesFrom(node.id).none { it.type == EdgeType.WALK } }
-        assertTrue(lonely.isEmpty(), "Scattered hubs without a walk: ${lonely.take(5).map { it.id }}")
+        assertTrue(lonely.isEmpty(), "Scattered waypoints without a walk: ${lonely.take(5).map { it.id }}")
         for (node in scatter) {
             val nearest = graph.edgesFrom(node.id).filter { it.type == EdgeType.WALK }
                 .minOf { graph.node(it.to)!!.position.computeLongestDistance(node.position) }
@@ -367,6 +367,6 @@ class WebWalkLoaderTest {
             }
         }
         val reachable = scatter.count { it.id in reached }
-        assertTrue(reachable > 500, "Only $reachable scattered hubs can be reached from Lumbridge.")
+        assertTrue(reachable > 500, "Only $reachable scattered waypoints can be reached from Lumbridge.")
     }
 }
