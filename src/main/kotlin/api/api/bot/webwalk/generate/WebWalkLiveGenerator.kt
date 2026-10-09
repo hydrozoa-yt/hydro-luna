@@ -3,6 +3,7 @@ package api.bot.webwalk.generate
 import api.bot.webwalk.data.WebWalkDataException
 import api.bot.webwalk.data.WebWalkLoader
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.NodeKind
 import api.bot.webwalk.model.TeleportKind
 import api.bot.webwalk.plan.DoorCrossings
 import api.bot.webwalk.plan.PathfinderWalkEstimator
@@ -26,9 +27,9 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
- * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `walk_graph.jsonc`. Everything is made in a
- * single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a running world. The files start
- * with a comment that says they are generated and when, see [WebWalkWriter.header].
+ * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `walk_graph.jsonc`.
+ * Everything is made in a single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a
+ * running world. The files start with a comment that says they are generated and when, see [WebWalkWriter.header].
  *
  * - The closed doors, gates and curtains of `obstacles.jsonc` are made by [WebWalkDoorGenerator] from the map data of the
  *   cache.
@@ -37,7 +38,7 @@ import java.time.Instant
  * - The teleports of `teleports.jsonc` are the teleport spells, the destinations of the teleport jewellery, and the home
  *   teleport, so that they are never written out by hand.
  * - The waypoints of `walk_graph.jsonc` are made from the zones, their banks and the sub-zones, moved onto a tile that can be stood
- *   on.
+ *   on. The ones of `waypoints_manual.json`, which only the generator reads, are copied into it as they are.
  * - The walk edges of `walk_graph.jsonc` link every node of the graph (the ones from the files that are not generated here too)
  *   with the cost of walking between them, according to the collision of the world.
  *
@@ -364,7 +365,7 @@ object WebWalkLiveGenerator {
      */
     fun finish(gathered: Gathered, directory: Path): Output {
         val sources = HashMap<String, String>()
-        for (file in WebWalkLoader.FILES) {
+        for (file in WebWalkLoader.FILES + WebWalkLoader.WAYPOINTS_MANUAL) {
             val path = directory.resolve(file)
             if (Files.exists(path)) {
                 sources[file] = Files.readString(path)
@@ -428,7 +429,11 @@ object WebWalkLiveGenerator {
         }
         gathered.report.count("scattered waypoints left out (nothing in range)", isolated)
         val keptIds = kept.map { it.id }.toSet()
-        val waypoints = gathered.waypoints.filter { it.id in keptIds }
+        val generatedIds = gathered.waypoints.map { it.id }.toSet()
+        val manual = kept.filter { it.kind == NodeKind.WAYPOINT && it.id !in generatedIds }
+            .map { GeneratedWaypoint(it.id, it.position, it.tags) }
+        gathered.report.count("manual waypoints", manual.size)
+        val waypoints = gathered.waypoints.filter { it.id in keptIds } + manual
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
         return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.walkGraph(waypoints, links))

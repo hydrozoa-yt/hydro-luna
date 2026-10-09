@@ -1,0 +1,6 @@
+{
+  "waypoints": [
+    { "id": "al_kharid_near_gate", "pos": [3277, 3227, 0] },
+    { "id": "lumbridge_outside_castle", "pos": [3235, 3226, 0] }
+  ]
+}

@@ -75,16 +75,23 @@ class WebWalkLoaderTest {
     }
 
     @Test
-    fun manualWaypointsCanBeLinkedToGeneratedWaypoints() {
-        val manual = """
-            { "waypoints": [ { "id": "wizards_tower", "pos": [3109, 3167] } ],
+    fun generatedEdgesCanLinkManualWaypoints() {
+        val manual = """{ "waypoints": [ { "id": "wizards_tower", "pos": [3109, 3167] } ] }"""
+        val graphText = """
+            { "waypoints": [ { "id": "draynor", "pos": [3093, 3244, 0] } ],
               "edges": [ { "from": "wizards_tower", "to": "draynor", "bidirectional": false } ] }
         """
-        val graph = load(WALK_GRAPH to waypoints, WAYPOINTS_MANUAL to manual)
-        assertEquals(3, graph.nodes.size)
+        val graph = load(WALK_GRAPH to graphText, WAYPOINTS_MANUAL to manual)
+        assertEquals(2, graph.nodes.size)
         assertEquals(1, graph.edgesFrom("wizards_tower").size)
         assertNull(graph.edgesFrom("wizards_tower").single().cost)
-        assertEquals(1, graph.edgesFrom("draynor").size)
+        assertEquals(0, graph.edgesFrom("draynor").size)
+    }
+
+    @Test
+    fun manualWaypointsCannotHaveEdges() {
+        val manual = """{ "waypoints": [ { "id": "a", "pos": [1, 1] } ], "edges": [] }"""
+        assertEquals(listOf("waypoints_manual.json.edges: unknown field"), problems(WAYPOINTS_MANUAL to manual))
     }
 
     @Test

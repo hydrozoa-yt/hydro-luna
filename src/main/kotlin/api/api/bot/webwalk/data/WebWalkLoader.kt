@@ -23,10 +23,12 @@ import java.nio.file.Path
  * Every file is optional, and a missing file is the same as an empty one. All the files are read before anything is
  * reported, so [WebWalkDataException] lists every problem at once. These are the files, with their fields:
  *
- * - `walk_graph.jsonc` (generated) and `waypoints_manual.json` (maintained by hand): an object with `waypoints` (`id`,
- *   `pos`, optional `tags`) and `edges` (`from`, `to`, optional `cost`, `bidirectional`, `requirements`) that walk
- *   between nodes. The ids of the two files share one namespace, so a manual waypoint can't silently replace a generated
- *   one.
+ * - `walk_graph.jsonc` (generated): an object with `waypoints` (`id`, `pos`, optional `tags`) and `edges` (`from`, `to`,
+ *   optional `cost`, `bidirectional`, `requirements`) that walk between nodes. It is the whole graph of waypoints: the
+ *   generator copies the ones of `waypoints_manual.json` into it.
+ * - `waypoints_manual.json` (maintained by hand, only read by the generator): an object with only `waypoints`, which have no
+ *   edges as the generator links them with the others. The ids of the two waypoint files share one namespace, so a manual
+ *   waypoint can't silently replace a generated one.
  * - `obstacles.jsonc` (generated): closed doors, gates and curtains. `climbs.jsonc` (generated): ladders, stairs and
  *   trapdoors. Both have entries with a `type`, `object`,
  *   `pos`, `from` and `to`, and an optional `cost`, `bidirectional`, `option` and `requirements`.
@@ -48,12 +50,13 @@ import java.nio.file.Path
 object WebWalkLoader {
 
     /**
-     * The generated waypoints, and the walk edges between them.
+     * The waypoints, and the walk edges between them. It is generated, with the waypoints of [WAYPOINTS_MANUAL] copied in.
      */
     const val WALK_GRAPH = "walk_graph.jsonc"
 
     /**
-     * The waypoints and walk edges that are maintained by hand.
+     * The waypoints that are maintained by hand. They have no edges, and are only read by the generator, which links them
+     * with the others and copies them into [WALK_GRAPH] along with the walk edges.
      */
     const val WAYPOINTS_MANUAL = "waypoints_manual.json"
 
@@ -88,9 +91,9 @@ object WebWalkLoader {
     const val FAIRY_RINGS = "fairy_rings.json"
 
     /**
-     * Every file that is loaded.
+     * Every file that is loaded. [WAYPOINTS_MANUAL] is not one of them, as the generator copies it into [WALK_GRAPH].
      */
-    val FILES = listOf(WALK_GRAPH, WAYPOINTS_MANUAL, OBSTACLES, CLIMBS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
+    val FILES = listOf(WALK_GRAPH, OBSTACLES, CLIMBS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
 
     /**
      * The logger instance.
@@ -206,8 +209,8 @@ object WebWalkLoader {
          * Reads every file and creates the graph.
          */
         fun build(): WebWalkGraph {
-            readWaypoints(WALK_GRAPH)
-            readWaypoints(WAYPOINTS_MANUAL)
+            readWaypoints(WALK_GRAPH, edges = true)
+            readWaypoints(WAYPOINTS_MANUAL, edges = false)
             readObstacles()
             readTeleports()
             readShips()
@@ -307,8 +310,11 @@ object WebWalkLoader {
 
         /**
          * Reads a waypoints file.
+         *
+         * @param file The file to read.
+         * @param edges If the file may have walk edges.
          */
-        fun readWaypoints(file: String) {
+        fun readWaypoints(file: String, edges: Boolean) {
             val root = root(file) ?: return
             for (waypoint in root.objects("waypoints")) {
                 val id = readId(waypoint)
@@ -319,7 +325,7 @@ object WebWalkLoader {
                     addNode(waypoint.where, WebWalkNode(id, pos, NodeKind.WAYPOINT, tags))
                 }
             }
-            for (edge in root.objects("edges")) {
+            for (edge in if (edges) root.objects("edges") else emptyList()) {
                 val from = edge.string("from")
                 val to = edge.string("to")
                 val type = edge.string("type", required = false)
