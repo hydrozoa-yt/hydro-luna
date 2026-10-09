@@ -1,4 +1,4 @@
-package game.bot.scripts
+package game.bot.scripts.skills
 
 import api.bot.Suspendable.naturalDexterityDelay
 import api.bot.Suspendable.waitFor
@@ -11,36 +11,41 @@ import api.bot.zone.SubZone
 import api.predef.*
 import api.predef.ext.*
 import com.google.gson.JsonObject
-import game.content.crystalChest.MakeCrystalKeyActionItem
+import game.obj.resource.fillable.WaterResource
+import game.bot.scripts.FillWaterBotScript
+import game.skill.crafting.potteryCrafting.MakeSoftClayActionItem
 import io.luna.game.action.ActionType
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.bot.Bot
-import io.luna.game.model.mob.dialogue.MakeItemDialogue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Assembles crystal keys from owned tooth and loop halves using the normal item-on-item interaction.
+ * Prepares soft clay from owned clay and one configured kind of filled water container.
  *
- * [InventoryBotScript] manages banking, travel, session expiry, and weak-action gating. Each bank visit
- * withdraws up to fourteen balanced pairs, limited by the smaller available stock. The make dialogue starts
- * [MakeCrystalKeyActionItem], which consumes both halves and creates a key without experience or a skill
- * requirement. The general-activities coordinator selects this task when both halves are owned.
- * This script does not open the crystal chest or claim a market profit.
+ * [InventoryBotScript] manages banking, travel, session expiry, and weak-action gating. Bank visits withdraw
+ * up to fourteen balanced input pairs, limited by the smaller available stock. The ordinary clay-on-water
+ * interaction starts [MakeSoftClayActionItem], which converts the inputs and returns the corresponding empty
+ * containers. It awards no experience and has no skill requirement. Selection is limited to the Crafting
+ * factory's non-training mode as pottery preparation; no sale price or market margin is assumed.
  *
- * Missing startup halves raise their total wanted-stock targets to at least 1,000 before stopping. Three
- * consecutive interactions without input consumption or unresolved banking requests end the session.
- * Withdrawals are unnoted and verified. Snapshots preserve duration, zones, and retry budgets; inventory
- * and bot safety are checked again when a saved session resumes.
+ * If water runs out while clay and matching empty containers remain, a bounded [FillWaterBotScript] prerequisite
+ * refills enough for the next clay batch. Activity selection can then choose preparation using the new stock.
+ * This script does not mine clay or make pottery.
+ * Missing startup inputs raise total wanted-stock targets to at least 1,000 before stopping. Three consecutive
+ * interactions without clay consumption or unresolved bank requests end the session. Snapshots retain the
+ * water-container id, duration, zones, and retry budgets, while live inventory and safety are checked again.
  *
  * @param bot The bot running this script.
+ * @property water The filled water-container item id supported by [WaterResource].
  * @param duration The session duration managed by the inherited lifecycle.
  * @param zones Candidate processing zones with existing banking and travel support.
  * @author lare96
  */
-class MakeCrystalKeyBotScript(
+class MakeSoftClayBotScript(
     bot: Bot,
+    val water: Int,
     duration: Duration,
     zones: MutableList<SubZone> = StationaryInventoryBotScript.DEFAULT_ZONES.toMutableList()
 ) : InventoryBotScript(bot, duration, zones) {
@@ -49,60 +54,83 @@ class MakeCrystalKeyBotScript(
         /** Maximum consecutive failed interactions or unresolved banking requests before stopping. */
         private const val MAX_FAILURES = 3
 
-        /** Tooth half consumed by the existing crystal-key assembly handler. */
-        const val TOOTH_HALF = 985
-        /** Loop half consumed by the existing crystal-key assembly handler. */
-        const val LOOP_HALF = 987
+        /** Clay input consumed by the existing soft-clay handler. */
+        const val CLAY = 434
 
         /**
-         * Saved retry counters alongside inherited duration and candidate zones.
-         * Restoring a session retains exhausted budgets rather than granting new attempts.
+         * Saved water-container id and retry counters alongside inherited duration and candidate zones.
+         * Restoring a session retains exhausted budgets instead of granting new attempts.
          *
          * @author lare96
          */
-        class CrystalKeyData : ZonedBotScriptData() {
-            /** Consecutive interactions that did not consume a tooth half. */
+        class SoftClayData : ZonedBotScriptData() {
+            /** Decimal filled-container item id used to reconstruct this session. */
+            var recipe = ""
+            /** Consecutive interactions that did not consume clay. */
             var failures = 0
             /** Banking requests since the last successfully verified withdrawal. */
             var bankFailures = 0
 
             override fun load(data: JsonObject) {
                 super.load(data)
+                recipe = data.get("recipe")?.asString ?: ""
                 failures = data.get("failures")?.asInt ?: 0
                 bankFailures = data.get("bankFailures")?.asInt ?: 0
             }
 
             override fun save(data: JsonObject) {
                 super.save(data)
+                data.addProperty("recipe", recipe)
                 data.addProperty("failures", failures)
                 data.addProperty("bankFailures", bankFailures)
             }
         }
     }
 
-    /** One of each half, the minimum inputs for a single crystal key. */
-    private val materials = listOf(Item(TOOTH_HALF), Item(LOOP_HALF))
-    /** Consecutive failed production interactions, reset after an input is consumed. */
+    init { require(water in WaterResource.FILLED_IDS) }
+
+    /** Level-one selector bucket; preparation itself has no skill requirement and grants no experience. */
+    val requiredLevel = 1
+    /** One clay and one filled water container, the minimum inputs for a conversion. */
+    private val materials = listOf(Item(CLAY), Item(water))
+    /** Consecutive failed interactions, reset after clay is consumed. */
     private var failures = 0
     /** Unresolved banking requests, reset only after the entire batch is withdrawn. */
     private var bankFailures = 0
 
     /**
-     * Restores the session configuration and retry budgets from saved state.
-     * Normal lifecycle hooks recheck current supplies and bot safety before assembly resumes.
+     * Restores the water-container id, session configuration, and retry budgets from saved state.
+     * Normal lifecycle hooks recheck current supplies and bot safety before preparation resumes.
      *
      * @param bot The bot that owns the saved session.
-     * @param data Previously serialized crystal-key assembly state.
+     * @param data Previously serialized soft-clay preparation state.
      */
-    constructor(bot: Bot, data: CrystalKeyData) : this(bot, data.duration, data.zones) {
+    constructor(bot: Bot, data: SoftClayData) : this(bot, data.recipe.toInt(), data.duration, data.zones) {
         failures = data.failures
         bankFailures = data.bankFailures
     }
 
-    /** Whether the bot owns at least one of each half across inventory and bank. */
+    /** Whether at least one clay and configured filled water container are owned across inventory and bank. */
     fun isEligible(): Boolean = bot.ownsProductionSupplies(materials)
 
-    /** Returns up to fourteen balanced banked half pairs, or an empty batch when either half is absent. */
+    /** Whether owned clay and matching empties can satisfy missing water through the refill prerequisite. */
+    fun canPrepareWater(): Boolean = !bot.ownsProductionSupplies(listOf(Item(water))) &&
+        bot.ownsProductionSupplies(listOf(Item(CLAY), Item(WaterResource.FILLABLES.inverse().getValue(water))))
+
+    /** Queues one bounded refill only when both clay and matching empties remain; no acquisition loop is created. */
+    private fun queueWaterPreparation(): Boolean {
+        if (bot.health < 1 || bot.isLocked || bot.combat.inCombat() ||
+            bot.actions.size(ActionType.STRONG) > 0) return false
+        if (!canPrepareWater()) return false
+        val empty = WaterResource.FILLABLES.inverse().getValue(water)
+        val clayStock = bot.bank.computeAmountForId(CLAY).toLong() + bot.inventory.computeAmountForId(CLAY)
+        val emptyStock = bot.bank.computeAmountForId(empty).toLong() + bot.inventory.computeAmountForId(empty)
+        bot.scriptStack.softPushHead(FillWaterBotScript(bot, empty, minOf(14L, clayStock, emptyStock).toInt(), duration))
+        stop()
+        return true
+    }
+
+    /** Returns up to fourteen balanced banked input pairs, or an empty batch when either input is absent. */
     fun bankBatch(): List<Item> = bot.productionBatch(materials)
 
     override fun withdraw(): List<Item> {
@@ -113,6 +141,7 @@ class MakeCrystalKeyBotScript(
             return emptyList()
         }
         if (!bot.ownsProductionSupplies(materials)) {
+            if (queueWaterPreparation()) return emptyList()
             val missing = materials.filter {
                 bot.bank.computeAmountForId(it.id).toLong() + bot.inventory.computeAmountForId(it.id) < it.amount
             }.map { it.id }
@@ -126,7 +155,7 @@ class MakeCrystalKeyBotScript(
     }
 
     override fun bankWithdraw(): List<Item> = bankBatch().also {
-        if (it.isEmpty()) stop()
+        if (it.isEmpty() && !queueWaterPreparation()) stop()
     }
 
     override suspend fun withdrawBankItems(items: List<Item>): Boolean {
@@ -153,7 +182,7 @@ class MakeCrystalKeyBotScript(
         return true
     }
 
-    /** Whether inventory contains at least one complete pair of key halves. */
+    /** Whether inventory contains at least one complete clay/water input pair. */
     private fun hasMaterials() = bot.inventory.containsAll(materials)
 
     override suspend fun onExecuteInZone(): Boolean {
@@ -176,20 +205,15 @@ class MakeCrystalKeyBotScript(
         return true
     }
 
-    /** Uses the tooth half on the loop half, waits for its dialogue, and requests the carried balanced batch. */
-    private suspend fun startProduction(): Boolean {
-        if (!handler.inventory.useItem(TOOTH_HALF).onItem(LOOP_HALF)) return false
-        if (!waitFor(3.seconds) { MakeItemDialogue::class in bot.overlays }) return false
-        val amount = materials.minOf { bot.inventory.computeAmountForId(it.id) / it.amount }
-        handler.widgets.clickMakeItem(0, amount)
-        return true
-    }
+    /** Uses clay on the configured filled container; the gameplay handler starts the repeating action directly. */
+    private suspend fun startProduction(): Boolean = handler.inventory.useItem(CLAY).onItem(water)
 
     override suspend fun finish() {
-        bot.actions.first(MakeCrystalKeyActionItem::class.java)?.interrupt()
+        bot.actions.first(MakeSoftClayActionItem::class.java)?.interrupt()
     }
 
-    override fun snapshot(): CrystalKeyData = CrystalKeyData().also {
+    override fun snapshot(): SoftClayData = SoftClayData().also {
+        it.recipe = water.toString()
         it.duration = duration
         it.zones = originalZones.toMutableList()
         it.failures = failures

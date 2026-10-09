@@ -6,41 +6,40 @@ import api.bot.script.InventoryBotScript
 import api.bot.script.StationaryInventoryBotScript
 import api.bot.script.ZonedBotScript.Companion.ZonedBotScriptData
 import api.bot.script.ownsProductionSupplies
-import api.bot.script.productionBatch
 import api.bot.zone.SubZone
 import api.predef.*
 import api.predef.ext.*
 import com.google.gson.JsonObject
-import game.content.crystalChest.MakeCrystalKeyActionItem
+import game.skill.woodcutting.searchNest.Nest
 import io.luna.game.action.ActionType
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.bot.Bot
-import io.luna.game.model.mob.dialogue.MakeItemDialogue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Assembles crystal keys from owned tooth and loop halves using the normal item-on-item interaction.
+ * Searches owned, unsearched bird nests through the normal first inventory option.
  *
- * [InventoryBotScript] manages banking, travel, session expiry, and weak-action gating. Each bank visit
- * withdraws up to fourteen balanced pairs, limited by the smaller available stock. The make dialogue starts
- * [MakeCrystalKeyActionItem], which consumes both halves and creates a key without experience or a skill
- * requirement. The general-activities coordinator selects this task when both halves are owned.
- * This script does not open the crystal chest or claim a market profit.
+ * Each search replaces one nest with an empty nest and adds one reward from Luna's existing [Nest] table.
+ * Banking withdraws at most half an inventory of one nest type, reserving one reward slot per search even when
+ * every reward is non-stackable. [InventoryBotScript] supplies the existing banking, travel, session-expiry,
+ * and weak-action lifecycle in supported stationary processing zones.
  *
- * Missing startup halves raise their total wanted-stock targets to at least 1,000 before stopping. Three
- * consecutive interactions without input consumption or unresolved banking requests end the session.
- * Withdrawals are unnoted and verified. Snapshots preserve duration, zones, and retry budgets; inventory
- * and bot safety are checked again when a saved session resumes.
+ * General activities select this script from owned inventory or bank stock. No nests are purchased or requested,
+ * and the script does not gather nests, grant experience, or change their reward distribution. The woodcutting
+ * script's existing pickup-and-search behavior remains separate. Missing supplies end the session; three failed
+ * interactions or unresolved banking requests also stop it. Snapshots retain the nest type and retry budgets.
  *
- * @param bot The bot running this script.
- * @param duration The session duration managed by the inherited lifecycle.
- * @param zones Candidate processing zones with existing banking and travel support.
+ * @param bot The bot searching its nests.
+ * @property nest The supported unsearched nest type processed throughout this session.
+ * @param duration Session length managed by the inherited lifecycle.
+ * @param zones Existing processing zones with banking and travel support.
  * @author lare96
  */
-class MakeCrystalKeyBotScript(
+class SearchNestBotScript(
     bot: Bot,
+    val nest: Nest,
     duration: Duration,
     zones: MutableList<SubZone> = StationaryInventoryBotScript.DEFAULT_ZONES.toMutableList()
 ) : InventoryBotScript(bot, duration, zones) {
@@ -49,61 +48,63 @@ class MakeCrystalKeyBotScript(
         /** Maximum consecutive failed interactions or unresolved banking requests before stopping. */
         private const val MAX_FAILURES = 3
 
-        /** Tooth half consumed by the existing crystal-key assembly handler. */
-        const val TOOTH_HALF = 985
-        /** Loop half consumed by the existing crystal-key assembly handler. */
-        const val LOOP_HALF = 987
-
         /**
-         * Saved retry counters alongside inherited duration and candidate zones.
-         * Restoring a session retains exhausted budgets rather than granting new attempts.
+         * Saved nest recipe and retry counters alongside inherited duration and candidate zones.
+         * Restoring a session retains its exhausted budgets instead of granting fresh attempts.
          *
          * @author lare96
          */
-        class CrystalKeyData : ZonedBotScriptData() {
-            /** Consecutive interactions that did not consume a tooth half. */
+        class NestData : ZonedBotScriptData() {
+            /** [Nest] enum name used to reconstruct the configured recipe. */
+            var recipe = ""
+            /** Consecutive interactions that did not consume an unsearched nest. */
             var failures = 0
             /** Banking requests since the last successfully verified withdrawal. */
             var bankFailures = 0
 
             override fun load(data: JsonObject) {
                 super.load(data)
+                recipe = data.get("recipe")?.asString ?: ""
                 failures = data.get("failures")?.asInt ?: 0
                 bankFailures = data.get("bankFailures")?.asInt ?: 0
             }
 
             override fun save(data: JsonObject) {
                 super.save(data)
+                data.addProperty("recipe", recipe)
                 data.addProperty("failures", failures)
                 data.addProperty("bankFailures", bankFailures)
             }
         }
     }
 
-    /** One of each half, the minimum inputs for a single crystal key. */
-    private val materials = listOf(Item(TOOTH_HALF), Item(LOOP_HALF))
-    /** Consecutive failed production interactions, reset after an input is consumed. */
+    /** One unsearched nest, the minimum supply for a single conversion. */
+    private val materials = listOf(Item(nest.id))
+    /** Consecutive failed search attempts, reset after an input is consumed. */
     private var failures = 0
-    /** Unresolved banking requests, reset only after the entire batch is withdrawn. */
+    /** Unresolved banking requests, reset after the entire batch is withdrawn. */
     private var bankFailures = 0
 
     /**
-     * Restores the session configuration and retry budgets from saved state.
-     * Normal lifecycle hooks recheck current supplies and bot safety before assembly resumes.
+     * Restores the nest, session configuration, and retry budgets from a snapshot.
+     * Initialization still checks current owned supplies and bot safety before the restored script can run.
      *
-     * @param bot The bot that owns the saved session.
-     * @param data Previously serialized crystal-key assembly state.
+     * @param bot The bot that owns the saved script.
+     * @param data Previously serialized nest-search state.
      */
-    constructor(bot: Bot, data: CrystalKeyData) : this(bot, data.duration, data.zones) {
+    constructor(bot: Bot, data: NestData) : this(bot, Nest.valueOf(data.recipe), data.duration, data.zones) {
         failures = data.failures
         bankFailures = data.bankFailures
     }
 
-    /** Whether the bot owns at least one of each half across inventory and bank. */
+    /** Checks at least one unsearched nest across inventory and bank. */
     fun isEligible(): Boolean = bot.ownsProductionSupplies(materials)
 
-    /** Returns up to fourteen balanced banked half pairs, or an empty batch when either half is absent. */
-    fun bankBatch(): List<Item> = bot.productionBatch(materials)
+    /** Returns up to fourteen banked unsearched nests, or an empty batch when stock is exhausted. */
+    fun bankBatch(): List<Item> {
+        val amount = minOf(bot.inventory.capacity() / 2, bot.bank.computeAmountForId(nest.id))
+        return if (amount > 0) listOf(Item(nest.id, amount)) else emptyList()
+    }
 
     override fun withdraw(): List<Item> {
         if (failures >= MAX_FAILURES || bankFailures >= MAX_FAILURES ||
@@ -113,10 +114,6 @@ class MakeCrystalKeyBotScript(
             return emptyList()
         }
         if (!bot.ownsProductionSupplies(materials)) {
-            val missing = materials.filter {
-                bot.bank.computeAmountForId(it.id).toLong() + bot.inventory.computeAmountForId(it.id) < it.amount
-            }.map { it.id }
-            missing.forEach { bot.preferences.raiseWantedItemTarget(it, 1_000) }
             stop()
             return emptyList()
         }
@@ -144,7 +141,7 @@ class MakeCrystalKeyBotScript(
     override suspend fun onInventoryBankRequested(): Boolean {
         if (bot.health < 1 || bot.isLocked || bot.combat.inCombat() ||
             bot.actions.size(ActionType.STRONG) > 0) return false
-        if (!forceBanking && hasMaterials()) return false
+        if (!forceBanking && hasMaterials() && bot.inventory.computeRemainingSize() > 0) return false
         if (bankFailures >= MAX_FAILURES) {
             stop()
             return false
@@ -153,13 +150,13 @@ class MakeCrystalKeyBotScript(
         return true
     }
 
-    /** Whether inventory contains at least one complete pair of key halves. */
+    /** Whether inventory contains at least one unsearched nest of the configured type. */
     private fun hasMaterials() = bot.inventory.containsAll(materials)
 
     override suspend fun onExecuteInZone(): Boolean {
         if (bot.health < 1 || bot.isLocked || bot.combat.inCombat() ||
             bot.actions.size(ActionType.STRONG) > 0) return true
-        if (!hasMaterials()) {
+        if (!hasMaterials() || bot.inventory.computeRemainingSize() == 0) {
             forceBanking = true
             return true
         }
@@ -176,20 +173,11 @@ class MakeCrystalKeyBotScript(
         return true
     }
 
-    /** Uses the tooth half on the loop half, waits for its dialogue, and requests the carried balanced batch. */
-    private suspend fun startProduction(): Boolean {
-        if (!handler.inventory.useItem(TOOTH_HALF).onItem(LOOP_HALF)) return false
-        if (!waitFor(3.seconds) { MakeItemDialogue::class in bot.overlays }) return false
-        val amount = materials.minOf { bot.inventory.computeAmountForId(it.id) / it.amount }
-        handler.widgets.clickMakeItem(0, amount)
-        return true
-    }
+    /** Clicks the nest's first inventory option to invoke the existing search handler once. */
+    private suspend fun startProduction(): Boolean = handler.inventory.clickItem(1, nest.id)
 
-    override suspend fun finish() {
-        bot.actions.first(MakeCrystalKeyActionItem::class.java)?.interrupt()
-    }
-
-    override fun snapshot(): CrystalKeyData = CrystalKeyData().also {
+    override fun snapshot(): NestData = NestData().also {
+        it.recipe = nest.name
         it.duration = duration
         it.zones = originalZones.toMutableList()
         it.failures = failures
