@@ -37,7 +37,7 @@ class WalkLinker(private val pathCost: (Position, Position) -> Int?,
                  private val neighbours: Int = 5,
                  private val nearRadius: Int = 40,
                  private val farRadius: Int = 400,
-                 private val joinAttempts: Int = 3,
+                 private val joinAttempts: Int = 5,
                  private val doors: DoorCrossings? = null,
                  private val besideTicks: Int = 4,
                  private val besideRadius: Int = 3) {
@@ -213,7 +213,7 @@ class WalkLinker(private val pathCost: (Position, Position) -> Int?,
         // A search that fails can cover everything that can be reached, so each pair of groups is only tried a few times.
         val failures = HashMap<Pair<Int, Int>, Int>()
         for (index in sorted.indices) {
-            for (other in nearest(sorted, components, grid, index, farRadius)) {
+            for (other in byWalk(index, nearest(sorted, components, grid, index, farRadius))) {
                 val a = groups.find(index)
                 val b = groups.find(other)
                 if (a == b) {
