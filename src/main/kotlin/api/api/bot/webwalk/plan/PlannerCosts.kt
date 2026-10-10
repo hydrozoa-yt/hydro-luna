@@ -9,9 +9,11 @@ package api.bot.webwalk.plan
  * @property doorTicks The time to open a door, gate or curtain and step through, if the edge doesn't say.
  * @property ladderTicks The time to climb a ladder or staircase, if the edge doesn't say.
  * @property trapdoorTicks The time to open a trapdoor and climb down, if the edge doesn't say.
+ * @property crossingTicks The time of a crossing that has a handler, such as a toll gate, if the edge doesn't say.
  * @property shipTicks The time of a ship trip, if the edge doesn't say.
  * @property fairyRingTicks The time of a fairy ring trip.
- * @property coinWeight The penalty for each coin that an edge needs, so that bots don't pay fares for short trips.
+ * @property coinWeight The penalty for each coin that an edge needs, so that bots don't pay fares and tolls for short trips.
+ * Coins are spent, so one coin is worth this many ticks: a toll of 10 coins is worth walking about 10 ticks to avoid.
  * @property runePenalty The penalty for casting a teleport spell, for its runes.
  * @property chargePenalty The penalty for using the charge of teleport jewellery.
  * @property wildernessEntry The penalty for walking into the wilderness, or arriving in it.
@@ -32,9 +34,10 @@ package api.bot.webwalk.plan
 data class PlannerCosts(val doorTicks: Double = 3.0,
                         val ladderTicks: Double = 4.0,
                         val trapdoorTicks: Double = 6.0,
+                        val crossingTicks: Double = 8.0,
                         val shipTicks: Double = 40.0,
                         val fairyRingTicks: Double = 12.0,
-                        val coinWeight: Double = 0.02,
+                        val coinWeight: Double = 1.0,
                         val runePenalty: Double = 6.0,
                         val chargePenalty: Double = 12.0,
                         val wildernessEntry: Double = 250.0,

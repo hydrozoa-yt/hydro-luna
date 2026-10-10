@@ -30,18 +30,26 @@ import java.nio.file.Path
  *   edges as the generator links them with the others. The ids of the two waypoint files share one namespace, so a manual
  *   waypoint can't silently replace a generated one.
  * - `obstacles.jsonc` (generated): closed doors, gates and curtains. `climbs.jsonc` (generated): ladders, stairs and
- *   trapdoors. Both have entries with a `type`, `object`,
- *   `pos`, `from` and `to`, and an optional `cost`, `bidirectional`, `option` and `requirements`.
+ *   trapdoors. `crossings.jsonc` (generated): crossings that a handler in code crosses, such as the Al Kharid toll gate.
+ *   All three have entries with a `type`, `object`, `pos`, `from` and `to`, and an optional `cost`, `bidirectional`,
+ *   `option`, `requirements` and `reverseRequirements`. A `CROSSING` also has a `handler`, which no other type may have.
  * - `obstacle_overrides.json` (maintained by hand): patches for obstacles, found by `pos` (and optionally `object`), that
- *   set `requirements` or `cost`, or turn the obstacle off with `disabled`. An override that finds no obstacle is a
- *   problem, so overrides can't quietly rot after the obstacles are generated again.
+ *   set `requirements`, `reverseRequirements` or `cost`, or turn the obstacle off with `disabled`. An override that finds
+ *   no obstacle is a problem, so overrides can't quietly rot after the obstacles are generated again.
  * - `teleports.jsonc` (generated): teleports, each with an `id`, `kind`, `dest`, `cost`, and the `key` (and for jewellery
  *   the `option`) that says which spell or jewellery it is.
  * - `ships.json`: an object with `ports` (`id`, `pos`) and `routes` (`from`, `to`, `cost`), or an empty array.
  * - `fairy_rings.json`: fairy rings, each with an `id`, `code` and `pos`.
  *
  * Positions are written as `[x, y]` or `[x, y, z]`. Requirements are written as an object with any of `skills` (skill name
- * to level), `items` (`id` and optional `amount`), `coins`, `flags` and `maxWilderness`.
+ * to level), `items` (`id` and optional `amount`), `coins`, `flags` and `maxWilderness`. Items are carried, not used up,
+ * but coins are spent: the planner counts them as a fare.
+ *
+ * `requirements` of an obstacle apply from its `from` to its `to`, and `reverseRequirements` from `to` to `from`. Without
+ * `reverseRequirements` the same requirements apply both ways, and `{}` means that nothing is needed to go back, which is
+ * how a gate that is only gated one way is written. Note that for generated doors `from` is the tile of the wall itself and
+ * `to` the tile on the far side of it. `bidirectional: false` is the other kind of one way: the obstacle can't be crossed
+ * back at all.
  *
  * The files may have `//` comments, which the generated ones use for a header that says they are generated.
  *
@@ -71,6 +79,11 @@ object WebWalkLoader {
     const val CLIMBS = "climbs.jsonc"
 
     /**
+     * The generated crossings that need a handler, which are obstacles too.
+     */
+    const val CROSSINGS = "crossings.jsonc"
+
+    /**
      * The patches that are applied to the generated obstacles.
      */
     const val OBSTACLE_OVERRIDES = "obstacle_overrides.json"
@@ -93,7 +106,7 @@ object WebWalkLoader {
     /**
      * Every file that is loaded. [WAYPOINTS_MANUAL] is not one of them, as the generator copies it into [WALK_GRAPH].
      */
-    val FILES = listOf(WALK_GRAPH, OBSTACLES, CLIMBS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
+    val FILES = listOf(WALK_GRAPH, OBSTACLES, CLIMBS, CROSSINGS, OBSTACLE_OVERRIDES, TELEPORTS, SHIPS, FAIRY_RINGS)
 
     /**
      * The logger instance.
@@ -158,10 +171,11 @@ object WebWalkLoader {
                               val cost: Int?,
                               val bidirectional: Boolean,
                               val requirements: Requirements,
-                              val action: EdgeAction? = null)
+                              val action: EdgeAction? = null,
+                              val reverseRequirements: Requirements? = null)
 
     /**
-     * An entry of `obstacles.jsonc`, which overrides can still change.
+     * An entry of `obstacles.jsonc`, `climbs.jsonc` or `crossings.jsonc`, which overrides can still change.
      */
     private class Obstacle(val where: String,
                            val type: EdgeType,
@@ -172,7 +186,9 @@ object WebWalkLoader {
                            var cost: Int?,
                            val bidirectional: Boolean,
                            val option: String?,
+                           val handler: String?,
                            var requirements: Requirements,
+                           var reverseRequirements: Requirements?,
                            var disabled: Boolean = false)
 
     /**
@@ -277,9 +293,12 @@ object WebWalkLoader {
 
         /**
          * Reads requirements, which are none if the field is missing.
+         *
+         * @param parent The entry that has the requirements.
+         * @param key The name of the field, which is `requirements` or `reverseRequirements`.
          */
-        fun readRequirements(parent: FieldReader): Requirements {
-            val reader = parent.obj("requirements") ?: return Requirements.NONE
+        fun readRequirements(parent: FieldReader, key: String = "requirements"): Requirements {
+            val reader = parent.obj(key) ?: return Requirements.NONE
             val skills = LinkedHashMap<Int, Int>()
             reader.obj("skills")?.let { skillReader ->
                 for (name in skillReader.keys()) {
@@ -348,7 +367,7 @@ object WebWalkLoader {
         fun readObstacles() {
             val obstacles = ArrayList<Obstacle>()
             val seen = HashSet<List<Any>>()
-            for (entry in entries(OBSTACLES) + entries(CLIMBS)) {
+            for (entry in entries(OBSTACLES) + entries(CLIMBS) + entries(CROSSINGS)) {
                 val obstacle = readObstacle(entry) ?: continue
                 val key = listOf(obstacle.type, obstacle.objectId, obstacle.pos, obstacle.from, obstacle.to)
                 if (!seen.add(key)) {
@@ -367,7 +386,8 @@ object WebWalkLoader {
                 val to = obstacleNode(obstacle.to)
                 pending += PendingEdge(obstacle.where, from, to, obstacle.type, obstacle.cost, obstacle.bidirectional,
                                        obstacle.requirements,
-                                       EdgeAction(obstacle.objectId, obstacle.pos, obstacle.option))
+                                       EdgeAction(obstacle.objectId, obstacle.pos, obstacle.option, obstacle.handler),
+                                       obstacle.reverseRequirements)
             }
         }
 
@@ -383,7 +403,9 @@ object WebWalkLoader {
             val cost = entry.int("cost", required = false, min = 0)
             val bidirectional = entry.bool("bidirectional")
             val option = entry.string("option", required = false)
+            val handler = entry.string("handler", required = false)
             val requirements = readRequirements(entry)
+            val reverseRequirements = if (entry.has("reverseRequirements")) readRequirements(entry, "reverseRequirements") else null
             entry.finish()
 
             var type: EdgeType? = null
@@ -405,8 +427,17 @@ object WebWalkLoader {
                 entry.reject("to", "must be the tile next to 'from' on the same plane for a ${type.name}")
                 return null
             }
+            if (type == EdgeType.CROSSING && handler == null) {
+                entry.reject("handler", "is required for a CROSSING")
+                return null
+            }
+            if (type != EdgeType.CROSSING && handler != null) {
+                entry.reject("handler", "is only for a CROSSING")
+                return null
+            }
             return Obstacle(entry.where, type, objectId, pos, from, to, cost,
-                            bidirectional ?: type.bidirectionalByDefault, option, requirements)
+                            bidirectional ?: type.bidirectionalByDefault, option, handler, requirements,
+                            reverseRequirements)
         }
 
         /**
@@ -420,12 +451,15 @@ object WebWalkLoader {
                 val cost = entry.int("cost", required = false, min = 0)
                 val hasRequirements = entry.has("requirements")
                 val requirements = readRequirements(entry)
+                val hasReverse = entry.has("reverseRequirements")
+                val reverseRequirements = readRequirements(entry, "reverseRequirements")
                 entry.finish()
                 if (pos == null) {
                     continue
                 }
-                if (disabled == null && cost == null && !hasRequirements) {
-                    errors.add(entry.where, "must set at least one of 'disabled', 'cost' or 'requirements'")
+                if (disabled == null && cost == null && !hasRequirements && !hasReverse) {
+                    errors.add(entry.where, "must set at least one of 'disabled', 'cost', 'requirements' or " +
+                            "'reverseRequirements'")
                     continue
                 }
                 val matches = obstacles.filter { it.pos == pos && (objectId == null || it.objectId == objectId) }
@@ -442,6 +476,9 @@ object WebWalkLoader {
                     }
                     if (hasRequirements) {
                         obstacle.requirements = requirements
+                    }
+                    if (hasReverse) {
+                        obstacle.reverseRequirements = reverseRequirements
                     }
                 }
             }
@@ -582,7 +619,7 @@ object WebWalkLoader {
             val resolved = WebWalkEdge(edge.from, edge.to, edge.type, edge.cost, edge.requirements, edge.action)
             edges += resolved
             if (edge.bidirectional) {
-                edges += resolved.reversed()
+                edges += resolved.reversed().copy(requirements = edge.reverseRequirements ?: edge.requirements)
             }
         }
     }

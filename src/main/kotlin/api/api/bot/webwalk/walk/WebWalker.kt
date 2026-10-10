@@ -1,12 +1,15 @@
 package api.bot.webwalk.walk
 
+import api.bot.webwalk.data.WebWalkDataException
 import api.bot.webwalk.data.WebWalkLoader
+import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.WebWalkGraph
 import api.bot.webwalk.plan.BotCapabilities
 import api.bot.webwalk.plan.DoorCrossings
 import api.bot.webwalk.plan.PathfinderWalkEstimator
 import api.bot.webwalk.plan.WebWalkPlan
 import api.bot.webwalk.plan.WebWalkPlanner
+import api.bot.webwalk.walk.crossing.CrossingHandlers
 import api.predef.*
 import io.luna.game.model.Position
 import io.luna.game.model.mob.bot.Bot
@@ -37,7 +40,7 @@ object WebWalker {
     /**
      * The web, which is read the first time that it is needed and is shared by all bots.
      */
-    private val graph: WebWalkGraph by lazy { WebWalkLoader.load(DIRECTORY) }
+    private val graph: WebWalkGraph by lazy { checkHandlers(WebWalkLoader.load(DIRECTORY)) }
 
     /**
      * The planner, which is made the first time that it is needed. It reads the web and the collision of the world, and is
@@ -62,6 +65,24 @@ object WebWalker {
      * The number of threads that plan trips.
      */
     private const val PLANNER_THREADS = 2
+
+    /**
+     * Checks that every crossing of a web has a handler to cross it, so that a typo in the data fails when the web is loaded
+     * instead of in the middle of a trip.
+     *
+     * @param graph The web.
+     * @return The same web.
+     * @throws WebWalkDataException If a crossing names a handler that doesn't exist.
+     */
+    fun checkHandlers(graph: WebWalkGraph): WebWalkGraph {
+        val problems = graph.edges.filter { it.type == EdgeType.CROSSING }
+            .mapNotNull { it.action?.handler }.distinct().filter { CrossingHandlers.forId(it) == null }
+            .map { "crossing handler '$it' does not exist, the handlers are ${CrossingHandlers.ids}" }
+        if (problems.isNotEmpty()) {
+            throw WebWalkDataException(problems)
+        }
+        return graph
+    }
 
     /**
      * Plans a trip for a bot, without taking it, on the thread that calls it. Must be called on the game thread, because it

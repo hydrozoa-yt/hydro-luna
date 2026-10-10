@@ -4,9 +4,13 @@ import api.bot.Suspendable.waitFor
 import api.bot.action.BotActionHandler
 import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.TeleportKind
+import api.bot.webwalk.plan.BotCapabilities
+import api.bot.webwalk.plan.CapabilitySnapshot
 import api.bot.webwalk.plan.PlanLeg
 import api.bot.webwalk.plan.TeleportAvailability
 import api.bot.webwalk.plan.WebWalkPlan
+import api.bot.webwalk.walk.crossing.CrossingContext
+import api.bot.webwalk.walk.crossing.CrossingHandlers
 import api.predef.*
 import api.predef.ext.*
 import engine.obj.Trapdoor
@@ -16,12 +20,7 @@ import io.luna.game.model.Position
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.bot.Bot
 import io.luna.game.model.mob.dialogue.OptionDialogue
-import io.luna.game.model.mob.movement.NavigationResult
 import io.luna.game.model.`object`.GameObject
-import kotlinx.coroutines.future.await
-import java.util.concurrent.CompletableFuture
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Takes a bot along a [WebWalkPlan], one leg at a time, until it is at the destination.
@@ -35,6 +34,11 @@ import kotlin.time.Duration.Companion.seconds
  * - Trapdoors are opened if they are closed, then climbed down.
  * - Teleports are cast, rubbed or typed as a player would. Ships and fairy rings are not supported yet, so a plan with one
  *   of those fails when it gets to it.
+ * - Crossings, such as the Al Kharid toll gate, are left to the [api.bot.webwalk.walk.crossing.CrossingHandler] that the
+ *   data names.
+ *
+ * Before a leg that has requirements the bot is checked against them again, because it may have spent or dropped what it
+ * needed since the trip was planned.
  *
  * Nothing is retried beyond a door that fails to open, and the walk stops at the first leg that fails. The bot is also done
  * as soon as it is within the radius of the destination, even if the plan has legs left.
@@ -54,24 +58,14 @@ class WebWalkExecutor(private val bot: Bot,
     companion object {
 
         /**
-         * The longest a walk of a single leg may take. Legs are short, so this only catches a bot that is stuck.
-         */
-        private val WALK_TIMEOUT = 60.seconds
-
-        /**
          * How long to wait for a door to open, a ladder to be climbed, or a dialogue to show.
          */
-        private val ACTION_TIMEOUT = 10.seconds
+        private val ACTION_TIMEOUT = CrossingContext.ACTION_TIMEOUT
 
         /**
          * How many times a door is tried before giving up on it.
          */
         private const val DOOR_ATTEMPTS = 3
-
-        /**
-         * How far, in tiles, a bot may land from where a climb says, because landings can be anywhere in an area.
-         */
-        private const val LANDING_SLACK = 8
 
         /**
          * How close, in tiles, a bot has to be to the end of a walk for it to carry on with another walk.
@@ -105,6 +99,11 @@ class WebWalkExecutor(private val bot: Bot,
     }
 
     /**
+     * What the bot is moved about with, which the crossing handlers use too.
+     */
+    private val context = CrossingContext(bot, handler)
+
+    /**
      * Takes the bot along a plan.
      *
      * @param plan The plan.
@@ -116,9 +115,10 @@ class WebWalkExecutor(private val bot: Bot,
                 return done(plan, index, "Arrived early, before leg ${index + 1} of ${plan.legs.size}.")
             }
             val next = plan.legs.getOrNull(index + 1)
-            val failure = when (leg.type) {
+            val failure = unmet(leg) ?: when (leg.type) {
                 EdgeType.WALK -> walk(leg.to, if (next?.type == EdgeType.WALK) WALK_SLACK else 0)
                 EdgeType.DOOR, EdgeType.GATE, EdgeType.CURTAIN -> crossDoor(leg)
+                EdgeType.CROSSING -> crossing(leg)
                 EdgeType.LADDER, EdgeType.STAIR -> climb(leg)
                 EdgeType.TRAPDOOR -> climbTrapdoor(leg)
                 EdgeType.TELEPORT -> teleport(leg)
@@ -153,8 +153,21 @@ class WebWalkExecutor(private val bot: Bot,
     /**
      * Determines if the bot is within a number of tiles of a position, on the same plane.
      */
-    private fun near(position: Position, tiles: Int): Boolean =
-        bot.position.z == position.z && bot.position.computeLongestDistance(position) <= tiles
+    private fun near(position: Position, tiles: Int): Boolean = context.near(position, tiles)
+
+    /**
+     * Checks that the bot still meets the requirements of a leg, because it may have spent or dropped what it needed since
+     * the trip was planned.
+     *
+     * @return `null` if it does, or why it doesn't.
+     */
+    private fun unmet(leg: PlanLeg): String? {
+        if (leg.requirements.isEmpty || BotCapabilities.snapshot(bot).meets(leg.requirements)) {
+            return null
+        }
+        val coins = if (leg.requirements.coins > 0) " (it has ${bot.inventory.computeAmountForId(CapabilitySnapshot.COINS)} coins)" else ""
+        return "the bot no longer meets ${leg.requirements}$coins"
+    }
 
     /**
      * Walks to a position.
@@ -163,29 +176,23 @@ class WebWalkExecutor(private val bot: Bot,
      * @param slack How many tiles short the bot may be let go, because another walk comes next, or `0` to stop exactly.
      * @return `null` if the bot got there, or why it didn't.
      */
-    private suspend fun walk(target: Position, slack: Int): String? {
-        val future: CompletableFuture<NavigationResult> = bot.navigator.navigate(target, true)
-        val finished = waitFor(WALK_TIMEOUT) { future.isDone || (slack > 0 && near(target, slack)) || atDestination() }
-        if (!finished) {
-            bot.navigator.cancel()
-            return "timed out walking to $target from ${bot.position}"
-        }
-        if (!future.isDone) {
-            // Let go short of the target, for the next walk or because the bot has arrived.
-            return null
-        }
-        if (future.isCancelled) {
-            return "the walk to $target was interrupted"
-        }
-        val result = future.await()
-        return if (result == NavigationResult.REACHED) null else "could not walk to $target from ${bot.position} ($result)"
-    }
+    private suspend fun walk(target: Position, slack: Int): String? = context.walk(target, slack, ::atDestination)
 
     /**
      * Finds an object by position and one of its ids, or `null` if it is not there.
      */
-    private fun find(position: Position, vararg ids: Int): GameObject? =
-        world.objects.findAll(position).filter { it.id in ids }.findFirst().orElse(null)
+    private fun find(position: Position, vararg ids: Int): GameObject? = context.find(position, *ids)
+
+    /**
+     * Crosses a crossing with the handler that its data names.
+     *
+     * @return `null` if the bot got through, or why it didn't.
+     */
+    private suspend fun crossing(leg: PlanLeg): String? {
+        val name = leg.action?.handler ?: return "the leg has no handler"
+        val crossingHandler = CrossingHandlers.forId(name) ?: return "there is no crossing handler '$name'"
+        return crossingHandler.cross(context, leg)
+    }
 
     /**
      * Opens a door, gate or curtain if it is closed, and walks through it.
@@ -330,7 +337,7 @@ class WebWalkExecutor(private val bot: Bot,
     /**
      * Determines if the bot has landed where a climb leads.
      */
-    private fun arrived(leg: PlanLeg): Boolean = near(leg.to, LANDING_SLACK)
+    private fun arrived(leg: PlanLeg): Boolean = context.arrived(leg)
 
     /**
      * Waits until the bot has landed where a climb leads and is free to move again. The climb locks the bot until it is
@@ -338,5 +345,5 @@ class WebWalkExecutor(private val bot: Bot,
      *
      * @return `true` if the bot landed and was free before the timeout.
      */
-    private suspend fun awaitArrival(leg: PlanLeg): Boolean = waitFor(ACTION_TIMEOUT) { arrived(leg) && !bot.isLocked }
+    private suspend fun awaitArrival(leg: PlanLeg): Boolean = context.awaitArrival(leg)
 }

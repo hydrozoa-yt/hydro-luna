@@ -27,12 +27,15 @@ import java.nio.file.Path
 import java.time.Instant
 
 /**
- * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `teleports.jsonc` and `walk_graph.jsonc`.
+ * Makes the generated files of the web-walker: `obstacles.jsonc`, `climbs.jsonc`, `crossings.jsonc`, `teleports.jsonc` and
+ * `walk_graph.jsonc`.
  * Everything is made in a single run of the server, by the `generateWebWalk` Gradle task, because most of it needs a
  * running world. The files start with a comment that says they are generated and when, see [WebWalkWriter.header].
  *
  * - The closed doors, gates and curtains of `obstacles.jsonc` are made by [WebWalkDoorGenerator] from the map data of the
  *   cache.
+ * - The crossings of `crossings.jsonc` are the objects of the [SpecialCrossings] that the cache's map data places, such as the
+ *   leaves of the Al Kharid toll gate, made by [WebWalkCrossingGenerator].
  * - The ladders, stairs and trapdoors of `climbs.jsonc` land where [LadderDestination], [StairDestination] and
  *   [Trapdoor] say that they do, which is what players get.
  * - The teleports of `teleports.jsonc` are the teleport spells, the destinations of the teleport jewellery, and the home
@@ -131,10 +134,12 @@ object WebWalkLiveGenerator {
      *
      * @property obstacles The text of `obstacles.jsonc`.
      * @property climbs The text of `climbs.jsonc`.
+     * @property crossings The text of `crossings.jsonc`.
      * @property teleports The text of `teleports.jsonc`.
      * @property walkGraph The text of `walk_graph.jsonc`.
      */
-    class Output(val obstacles: String, val climbs: String, val teleports: String, val walkGraph: String)
+    class Output(val obstacles: String, val climbs: String, val crossings: String, val teleports: String,
+                 val walkGraph: String)
 
     /**
      * Reads the world. Must be called on the game thread.
@@ -183,9 +188,9 @@ object WebWalkLiveGenerator {
             add("spell_${spell.name.lowercase()}", TeleportKind.SPELL, spell.name, null, spell.destination, SPELL_TICKS)
         }
         for (jewellery in TeleportJewellery.entries) {
-            jewellery.destinations.forEachIndexed { index, (_, destination) ->
+            jewellery.destinations.forEachIndexed { index, destination ->
                 add("jewellery_${jewellery.name.lowercase()}_${index + 1}", TeleportKind.JEWELLERY, jewellery.name,
-                    index + 1, destination, JEWELLERY_TICKS)
+                    index + 1, destination.centre, JEWELLERY_TICKS)
             }
         }
         add("home", TeleportKind.HOME, null, null, Luna.settings().game().startingPosition(), HOME_TICKS)
@@ -391,6 +396,10 @@ object WebWalkLiveGenerator {
         sources[WebWalkLoader.OBSTACLES] = doors.obstacles
         val climbsText = WebWalkWriter.obstacles(gathered.climbs)
         sources[WebWalkLoader.CLIMBS] = climbsText
+        val crossings = WebWalkCrossingGenerator.generate(ctx.cache.mapIndexTable)
+        crossings.report.counts.forEach { (what, amount) -> gathered.report.count(what, amount) }
+        gathered.report.skipped += crossings.report.skipped
+        sources[WebWalkLoader.CROSSINGS] = crossings.text
         val teleportsText = WebWalkWriter.teleports(gathered.teleports)
         sources[WebWalkLoader.TELEPORTS] = teleportsText
         sources[WebWalkLoader.WALK_GRAPH] = WebWalkWriter.walkGraph(gathered.waypoints, emptyList())
@@ -452,7 +461,7 @@ object WebWalkLiveGenerator {
         gathered.report.count("nodes", kept.size)
         gathered.report.count("walk links", links.size)
 
-        return Output(doors.obstacles, climbsText, teleportsText, WebWalkWriter.walkGraph(waypoints, links))
+        return Output(doors.obstacles, climbsText, crossings.text, teleportsText, WebWalkWriter.walkGraph(waypoints, links))
     }
 
     /**
@@ -467,6 +476,7 @@ object WebWalkLiveGenerator {
         Files.createDirectories(directory)
         Files.writeString(directory.resolve(WebWalkLoader.OBSTACLES), header + output.obstacles)
         Files.writeString(directory.resolve(WebWalkLoader.CLIMBS), header + output.climbs)
+        Files.writeString(directory.resolve(WebWalkLoader.CROSSINGS), header + output.crossings)
         Files.writeString(directory.resolve(WebWalkLoader.TELEPORTS), header + output.teleports)
         Files.writeString(directory.resolve(WebWalkLoader.WALK_GRAPH), header + output.walkGraph)
     }
@@ -482,6 +492,7 @@ object WebWalkLiveGenerator {
     fun outOfDate(output: Output, directory: Path): List<String> {
         val expected = mapOf(WebWalkLoader.OBSTACLES to output.obstacles,
                              WebWalkLoader.CLIMBS to output.climbs,
+                             WebWalkLoader.CROSSINGS to output.crossings,
                              WebWalkLoader.TELEPORTS to output.teleports,
                              WebWalkLoader.WALK_GRAPH to output.walkGraph)
         val stale = ArrayList<String>()
@@ -557,8 +568,8 @@ object WebWalkGenerationRunner {
                     say(if (stale.isEmpty()) "The generated files are up to date." else "Out of date: $stale")
                 } else {
                     WebWalkLiveGenerator.write(output, DIRECTORY)
-                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS}, ${WebWalkLoader.TELEPORTS} and ${WebWalkLoader.WALK_GRAPH} to " +
-                                "$DIRECTORY.")
+                    say("Wrote ${WebWalkLoader.OBSTACLES}, ${WebWalkLoader.CLIMBS}, ${WebWalkLoader.CROSSINGS}, " +
+                                "${WebWalkLoader.TELEPORTS} and ${WebWalkLoader.WALK_GRAPH} to $DIRECTORY.")
                 }
             } catch (e: Throwable) {
                 failed = true

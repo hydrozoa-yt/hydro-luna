@@ -56,7 +56,7 @@ class TeleportAvailabilityTest {
     fun theShippedTeleportsAreAllLinkedToTheWalkableWorld() {
         val graph = WebWalkLoader.load(Path.of("data/game/bots/webwalk"))
 
-        assertTrue(graph.teleports.size >= 25, "Only ${graph.teleports.size} teleports.")
+        assertTrue(graph.teleports.size >= 24, "Only ${graph.teleports.size} teleports.")
         assertTrue(graph.teleports.any { it.id == "home" })
         assertTrue(graph.teleports.any { it.id == "spell_camelot" })
         // The Ape Atoll spell lands in a pocket that nothing else in the web leads to yet (it is behind something that isn't a

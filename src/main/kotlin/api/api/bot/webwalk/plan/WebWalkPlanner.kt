@@ -3,6 +3,7 @@ package api.bot.webwalk.plan
 import api.bot.webwalk.model.EdgeAction
 import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.FairyRing
+import api.bot.webwalk.model.Requirements
 import api.bot.webwalk.model.TeleportDefinition
 import api.bot.webwalk.model.TeleportKind
 import api.bot.webwalk.model.WebWalkEdge
@@ -245,11 +246,12 @@ class WebWalkPlanner(private val graph: WebWalkGraph,
 
         // Takes a step of a number of ticks, with what that adds to the cost.
         fun step(from: Int, to: Int, type: EdgeType, ticks: Double, extra: Double, action: EdgeAction? = null,
-                 teleport: TeleportDefinition? = null, ring: FairyRing? = null, exposed: Boolean = true) {
+                 teleport: TeleportDefinition? = null, ring: FairyRing? = null, exposed: Boolean = true,
+                 requirements: Requirements = Requirements.NONE) {
             val exposure = if (exposed) ticks else 0.0
             val cost = ticks + extra + wildernessPenalty(level(from), level(to), exposure)
             val key = (from * 31 + to) * 31 + type.ordinal + (teleport?.id?.hashCode() ?: 0)
-            relax(from, to, PlanLeg(type, position(from), position(to), cost, action, teleport, ring), key)
+            relax(from, to, PlanLeg(type, position(from), position(to), cost, action, teleport, ring, requirements), key)
         }
 
         dist[start] = 0.0
@@ -274,7 +276,8 @@ class WebWalkPlanner(private val graph: WebWalkGraph,
                         continue
                     }
                     val ticks = baseTicks(edge, node, indexed.to)
-                    step(node, indexed.to, edge.type, ticks, edge.requirements.coins * costs.coinWeight, edge.action)
+                    step(node, indexed.to, edge.type, ticks, edge.requirements.coins * costs.coinWeight, edge.action,
+                         requirements = edge.requirements)
                 }
                 request.endLinks[node]?.let { step(node, end, EdgeType.WALK, it.toDouble(), 0.0) }
                 ringByNode[node]?.let { ring ->
@@ -325,6 +328,7 @@ class WebWalkPlanner(private val graph: WebWalkGraph,
             EdgeType.DOOR, EdgeType.GATE, EdgeType.CURTAIN -> costs.doorTicks
             EdgeType.LADDER, EdgeType.STAIR -> costs.ladderTicks
             EdgeType.TRAPDOOR -> costs.trapdoorTicks
+            EdgeType.CROSSING -> costs.crossingTicks
             EdgeType.SHIP -> costs.shipTicks
             EdgeType.FAIRY_RING, EdgeType.TELEPORT -> costs.fairyRingTicks
         }
