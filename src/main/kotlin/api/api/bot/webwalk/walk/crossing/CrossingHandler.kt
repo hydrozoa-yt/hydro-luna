@@ -6,10 +6,6 @@ import api.bot.webwalk.plan.PlanLeg
  * Crosses the edges of the web that are more than a click on a door, ladder or the like, such as a gate that charges a toll.
  * An edge names its handler in the `handler` field of its data, and [CrossingHandlers] finds it.
  *
- * It is important that this flexible system not be misused to handle edges that are not unique.
- * For edges where there exists multiple instances of it in the graph, a separate system should be used (such gnome gliders, teleport jewellery or ).
- * For edges that require unique logic to get past, or are asymmetrical
- *
  * @author Hydrozoa
  */
 fun interface CrossingHandler {
