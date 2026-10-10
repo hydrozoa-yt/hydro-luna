@@ -80,6 +80,12 @@ enum class EdgeType(val bidirectionalByDefault: Boolean) {
     TRAPDOOR(false),
 
     /**
+     * A crossing between two nearby tiles that needs more than a click on an object, such as a gate that charges a toll. The
+     * [EdgeAction.handler] of the edge says how it is crossed.
+     */
+    CROSSING(true),
+
+    /**
      * A ship between two ports.
      */
     SHIP(true),
@@ -95,10 +101,10 @@ enum class EdgeType(val bidirectionalByDefault: Boolean) {
     FAIRY_RING(false);
 
     /**
-     * @return `true` if this is a door, gate or curtain, which are walked straight through.
+     * @return `true` if this is a door, gate, curtain or crossing, which are steps between two nearby tiles on one plane.
      */
     val isDoorLike: Boolean
-        get() = this == DOOR || this == GATE || this == CURTAIN
+        get() = this == DOOR || this == GATE || this == CURTAIN || this == CROSSING
 
     /**
      * @return `true` if this type is made from an entry of `obstacles.jsonc`.
@@ -143,12 +149,14 @@ data class WebWalkNode(val id: String,
  * @property objectId The id of the object to use, for doors, ladders and the like.
  * @property objectPosition The position of that object.
  * @property option The name of the menu option to use on the object, or `null` to choose by the object's type.
+ * @property handler The name of the crossing handler that crosses the edge, for [EdgeType.CROSSING].
  *
  * @author Hydrozoa
  */
 data class EdgeAction(val objectId: Int? = null,
                       val objectPosition: Position? = null,
-                      val option: String? = null)
+                      val option: String? = null,
+                      val handler: String? = null)
 
 /**
  * A directed connection between two nodes. Data that is travelled both ways is loaded as two edges.

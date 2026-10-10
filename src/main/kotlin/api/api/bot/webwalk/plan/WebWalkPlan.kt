@@ -3,6 +3,7 @@ package api.bot.webwalk.plan
 import api.bot.webwalk.model.EdgeAction
 import api.bot.webwalk.model.EdgeType
 import api.bot.webwalk.model.FairyRing
+import api.bot.webwalk.model.Requirements
 import api.bot.webwalk.model.TeleportDefinition
 import io.luna.game.model.Position
 
@@ -16,6 +17,7 @@ import io.luna.game.model.Position
  * @property action What to do to take the step, for doors, ladders and the like.
  * @property teleport The teleport to use, for [EdgeType.TELEPORT].
  * @property fairyRing The ring to arrive at, for [EdgeType.FAIRY_RING].
+ * @property requirements What the bot needs to take the step, so that the executor can check that it still does.
  *
  * @author Hydrozoa
  */
@@ -25,7 +27,8 @@ data class PlanLeg(val type: EdgeType,
                    val cost: Double,
                    val action: EdgeAction? = null,
                    val teleport: TeleportDefinition? = null,
-                   val fairyRing: FairyRing? = null)
+                   val fairyRing: FairyRing? = null,
+                   val requirements: Requirements = Requirements.NONE)
 
 /**
  * A trip from one position to another, as the steps to take in order.

@@ -1,8 +1,10 @@
 package api.bot.webwalk.generate
 
 import api.bot.webwalk.model.EdgeType
+import api.bot.webwalk.model.Requirements
 import api.bot.webwalk.model.TeleportKind
 import io.luna.game.model.Position
+import io.luna.game.model.mob.Skill
 import io.luna.game.model.`object`.ObjectDirection
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -28,6 +30,11 @@ data class PlacedWall(val objectId: Int, val position: Position, val direction: 
  * @property from The tile to cross it from.
  * @property to The tile that crossing it arrives at.
  * @property option The menu option to use on the object, or `null` to choose by the object's type.
+ * @property handler The name of the crossing handler, for [EdgeType.CROSSING], and otherwise `null`.
+ * @property cost The time to cross it in game ticks, or `null` to leave it to the planner.
+ * @property requirements What a bot needs to cross it from [from] to [to].
+ * @property reverseRequirements What a bot needs to cross it from [to] to [from], or `null` for the same as [requirements].
+ * @property bidirectional If it can be crossed back, or `null` for the usual for its [type].
  *
  * @author Hydrozoa
  */
@@ -36,7 +43,12 @@ data class GeneratedObstacle(val type: EdgeType,
                              val pos: Position,
                              val from: Position,
                              val to: Position,
-                             val option: String? = null)
+                             val option: String? = null,
+                             val handler: String? = null,
+                             val cost: Int? = null,
+                             val requirements: Requirements = Requirements.NONE,
+                             val reverseRequirements: Requirements? = null,
+                             val bidirectional: Boolean? = null)
 
 /**
  * A waypoint of `walk_graph.jsonc` made by the generator.
@@ -262,17 +274,48 @@ object WebWalkWriter {
         text.lineSequence().dropWhile { it.startsWith(COMMENT) || it.isBlank() }.joinToString("\n")
 
     /**
-     * Writes `obstacles.jsonc`.
+     * Writes `obstacles.jsonc`, `climbs.jsonc` or `crossings.jsonc`. What an obstacle doesn't set is left out.
      */
     fun obstacles(obstacles: Collection<GeneratedObstacle>): String {
         val sorted = obstacles.sortedWith(compareBy({ it.pos.z }, { it.pos.x }, { it.pos.y }, { it.objectId },
                                                     { it.type }, { it.from.z }, { it.from.x }, { it.from.y },
                                                     { it.to.z }, { it.to.x }, { it.to.y }))
         return lines(sorted.map { entry ->
+            val handler = entry.handler?.let { ", \"handler\": ${quote(it)}" } ?: ""
             val option = entry.option?.let { ", \"option\": ${quote(it)}" } ?: ""
-            "{ \"type\": \"${entry.type}\", \"object\": ${entry.objectId}, \"pos\": ${position(entry.pos)}, " +
-                    "\"from\": ${position(entry.from)}, \"to\": ${position(entry.to)}$option }"
+            val cost = entry.cost?.let { ", \"cost\": $it" } ?: ""
+            val bidirectional = entry.bidirectional?.let { ", \"bidirectional\": $it" } ?: ""
+            val requirements = if (entry.requirements.isEmpty) "" else ", \"requirements\": ${requirements(entry.requirements)}"
+            val reverse = entry.reverseRequirements?.let { ", \"reverseRequirements\": ${requirements(it)}" } ?: ""
+            "{ \"type\": \"${entry.type}\"$handler, \"object\": ${entry.objectId}, \"pos\": ${position(entry.pos)}, " +
+                    "\"from\": ${position(entry.from)}, \"to\": ${position(entry.to)}$option$cost$bidirectional" +
+                    "$requirements$reverse }"
         }, "[", "]")
+    }
+
+    /**
+     * Writes requirements as an object that the loader reads, with the skills by lower case name. Nothing that isn't
+     * required is written, so no requirements are `{}`.
+     */
+    fun requirements(requirements: Requirements): String {
+        val fields = ArrayList<String>()
+        if (requirements.skills.isNotEmpty()) {
+            fields += "\"skills\": { " + requirements.skills.entries.sortedBy { it.key }
+                .joinToString(", ") { "${quote(Skill.NAMES[it.key].lowercase())}: ${it.value}" } + " }"
+        }
+        if (requirements.items.isNotEmpty()) {
+            fields += "\"items\": [" + requirements.items.joinToString(", ") { item ->
+                "{ \"id\": ${item.id}" + (if (item.amount != 1) ", \"amount\": ${item.amount}" else "") + " }"
+            } + "]"
+        }
+        if (requirements.coins != 0) {
+            fields += "\"coins\": ${requirements.coins}"
+        }
+        if (requirements.flags.isNotEmpty()) {
+            fields += "\"flags\": [" + requirements.flags.sorted().joinToString(", ") { quote(it) } + "]"
+        }
+        requirements.maxWilderness?.let { fields += "\"maxWilderness\": $it" }
+        return if (fields.isEmpty()) "{}" else "{ ${fields.joinToString(", ")} }"
     }
 
     /**
