@@ -114,12 +114,11 @@ object TeleportAvailability {
     }
 
     /**
-     * Finds the ids of the pieces of a jewellery that can be used. Jewellery that doesn't crumble ends with a piece that
-     * has no charge left.
+     * Finds the ids of the pieces of a jewellery that can be used. The empty piece that jewellery which doesn't crumble
+     * ends with isn't one of them.
      *
      * @param jewellery The jewellery.
      * @return The ids, from the one with the most charges to the one with the fewest.
      */
-    fun chargedIds(jewellery: TeleportJewellery): List<Int> =
-        if (jewellery.crumbles || jewellery.items.size < 2) jewellery.items else jewellery.items.dropLast(1)
+    fun chargedIds(jewellery: TeleportJewellery): List<Int> = jewellery.items
 }

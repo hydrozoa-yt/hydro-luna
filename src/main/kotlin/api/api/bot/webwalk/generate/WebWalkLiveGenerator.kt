@@ -183,9 +183,9 @@ object WebWalkLiveGenerator {
             add("spell_${spell.name.lowercase()}", TeleportKind.SPELL, spell.name, null, spell.destination, SPELL_TICKS)
         }
         for (jewellery in TeleportJewellery.entries) {
-            jewellery.destinations.forEachIndexed { index, (_, destination) ->
+            jewellery.destinations.forEachIndexed { index, destination ->
                 add("jewellery_${jewellery.name.lowercase()}_${index + 1}", TeleportKind.JEWELLERY, jewellery.name,
-                    index + 1, destination, JEWELLERY_TICKS)
+                    index + 1, destination.centre, JEWELLERY_TICKS)
             }
         }
         add("home", TeleportKind.HOME, null, null, Luna.settings().game().startingPosition(), HOME_TICKS)
