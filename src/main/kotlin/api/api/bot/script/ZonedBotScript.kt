@@ -13,6 +13,7 @@ import io.luna.game.model.Entity
 import io.luna.game.model.LocatableDistanceComparator
 import io.luna.game.model.mob.bot.Bot
 import io.luna.util.GsonUtils
+import kotlinx.coroutines.future.await
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -122,10 +123,7 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
      * only called once the bot is close enough to the zone.
      */
     protected var activeZone: SubZone? = null
-        private set(value) {
-            onNewActiveZone(field)
-            field = value
-        }
+        private set
 
     /**
      * The original candidate-zone list used for one retry pass after travel-based selection failures.
@@ -188,6 +186,15 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
         if (!checkDuration()) {
             return true
         }
+
+        // A failed banking attempt keeps forceBanking set. Retry it from here instead of travelling
+        // back to the work zone without the supplies that sent us to the bank.
+        if (forceBanking && activeZone != null) {
+            bankIfNeeded()
+            bot.naturalMicroDelay()
+            return false
+        }
+
 
         if (!ensureActiveZone()) {
             bot.log("No active zone could be selected. Stopping script. remainingCandidates=${zones.size}")
@@ -307,7 +314,7 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
 
     }
 
-    open fun onNewActiveZone(lastZone: SubZone?) {
+    open suspend fun onNewActiveZone(lastZone: SubZone?) {
 
     }
 
@@ -382,15 +389,19 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
 
             bot.log("Trying candidate zone. zone=$newZone, remainingCandidates=${zones.size}")
 
-            if (bot.subZone == newZone) {
+            if (newZone in bot.subZones) {
+                val lastZone = activeZone
                 activeZone = newZone
+                onNewActiveZone(lastZone)
                 cachedBank = null
                 bot.log("Selected active zone because bot is already inside it. zone=$newZone")
                 return true
             }
 
             if (handler.travelTo(newZone)) {
+                val lastZone = activeZone
                 activeZone = newZone
+                onNewActiveZone(lastZone)
                 cachedBank = null
                 bot.log("Selected active zone after successful travel request. zone=$newZone")
                 return true
@@ -456,21 +467,18 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
         val parent = activeZone.parent(bot)
 
         val bank = cachedBank
-        val outside = bot.subZone?.let { it.outside(bot) }
-        if (bank != null && outside != null && !bank.isWithinDistance(bot, 64)) {
-            /**
-             * We're inside a sub-zone with an entrance, such as an altar, a dungeon, or the essence mine, and can't
-             * walk to the cached bank. Travel to the parent zone first, the same way the first banking trip does.
-             */
-            bot.log(
-                "Cannot walk to cached bank from sub-zone. Travelling to parent zone first. " +
-                        "subZone=${bot.subZone}, parent=$parent, cachedBank=$bank"
-            )
-            if (!handler.travelTo(parent)) {
-                bot.log("Banking aborted because travel to parent zone failed. Clearing cached bank. parent=$parent")
-                cachedBank = null
+        if (bank != null && !bot.bank.isOpen) {
+            val origin = bot.position
+            val targetPosition = bank.position
+            val reachable = bot.navigator.canReachForInteraction(bank).await()
+            // An async result belongs to its original positions. Retry rather than route on a stale result.
+            if (bot.position != origin || bank.position != targetPosition) {
                 forceBanking = true
                 return
+            }
+            if (!reachable) {
+                bot.log("No complete walking route confirmed to cached bank. Resolving parent/home route. cachedBank=$bank")
+                cachedBank = null
             }
         }
 
@@ -487,7 +495,7 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
 
                 for (bank in sortedBanks) {
                     val option: Int = bank.def().actions.filter { it != "null" }.size
-                    if (handler.interactions.interact(option, bank)) {
+                    if (handler.interactions.interact(option, bank) && waitFor(5.seconds) { bot.bank.isOpen }) {
                         cachedBank = bank
                         bot.log("Cached bank selected. parent=$parent, bank=$bank, option=$option")
                         break
@@ -503,7 +511,7 @@ abstract class ZonedBotScript(bot: Bot, var duration: Duration, val zones: Mutab
                 if (npc != null) {
                     bot.log("Banking NPC ${npc.id} found!")
                     val option: Int = npc.def().actions.filter { it != "null" }.size
-                    if (handler.interactions.interact(option, npc)) {
+                    if (handler.interactions.interact(option, npc) && waitFor(5.seconds) { bot.bank.isOpen }) {
                         cachedBank = npc
                     }
                 }

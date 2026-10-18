@@ -1,6 +1,7 @@
 package io.luna.game.model.mob.bot.schedule;
 
 import api.bot.script.BotScript;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import com.google.common.primitives.Chars;
 import com.google.common.util.concurrent.AbstractScheduledService;
@@ -15,6 +16,7 @@ import io.luna.game.model.mob.Skill;
 import io.luna.game.model.mob.bot.Bot;
 import io.luna.game.model.mob.bot.BotLogManager.BotStreamType;
 import io.luna.game.model.mob.bot.BotSettings;
+import io.luna.game.model.mob.bot.brain.BotActivity;
 import io.luna.game.model.mob.bot.brain.BotPersonality;
 import io.luna.game.model.mob.bot.brain.BotPreference;
 import io.luna.util.GsonUtils;
@@ -38,6 +40,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -63,9 +66,35 @@ public final class BotScheduleService extends AbstractScheduledService {
     private static final Logger logger = LogManager.getLogger();
 
     /**
+     * Maps username tags to preference modifiers applied when a bot's username contains the corresponding tag.
+     * <p>
+     * These tags provide lightweight hints about a bot's intended skills or activities based on its generated username.
+     */
+    private static final ImmutableMap<String, Consumer<BotPreference.Builder>> USERNAME_TAGS = ImmutableMap.of(
+            // Mining-related usernames prefer training Mining.
+            "miner", preferences -> preferences.addSkill(Skill.MINING),
+
+            // PK-related usernames strongly prefer player killing.
+            "pker", preferences -> preferences.setActivity(BotActivity.PKING, 0.90),
+            "pking", preferences -> preferences.setActivity(BotActivity.PKING, 0.90),
+
+            // Magic-related usernames prefer training Magic.
+            "wizard", preferences -> preferences.addSkill(Skill.MAGIC),
+
+            // Fishing-related usernames prefer training Fishing.
+            "fish", preferences -> preferences.addSkill(Skill.FISHING),
+
+            // Woodcutting-related usernames prefer training Woodcutting.
+            "yew", preferences -> preferences.addSkill(Skill.WOODCUTTING),
+
+            // Farming-related usernames prefer training Farming.
+            "farm", preferences -> preferences.addSkill(Skill.FARMING)
+    );
+
+    /**
      * The total base number of bots this service may try to log in during a single scheduler pass.
      */
-    private static final int BASE_LOGIN_COUNT = 15;
+    private static final Range<Integer> BASE_LOGIN_COUNT = Range.closed(30, 60);
 
     /**
      * The base range amount of new bots this service may try to log in during a single scheduler pass.
@@ -341,13 +370,12 @@ public final class BotScheduleService extends AbstractScheduledService {
                 BotPersonality personality = personalityBuilder.build();
                 BotPreference.Builder preferences = new BotPreference.Builder(
                         world.getBotManager().getPersonalityManager(), personality).randomizeSmart();
-                if (username.contains("miner")) {
-                    preferences.addSkill(Skill.MINING);
+                for (var entry : USERNAME_TAGS.entrySet()) {
+                    String tag = entry.getKey();
+                    if (username.contains(tag)) {
+                        entry.getValue().accept(preferences);
+                    }
                 }
-                // TODO replace spaces in regular player usernames with _ as well
-                // TODO If a bot has certain 'tags' in their name like 'miner' or 'cutter' 'woodcut' etc.
-                //  make them more likely to do that skill! Use a map tag -> skill_id
-                //  or even map tag -> (prefrences) -> void, so you can set any prefrence based on tag, pking ,etc.
 
                 if (!world.getBots().exists(username)) {
                     login(username, personality, preferences.build());
@@ -439,7 +467,7 @@ public final class BotScheduleService extends AbstractScheduledService {
          * - 100%+ target online  -> no automatic logins this cycle.
          */
         double goalPercent = 1.0 - Math.min(1.0, onlineCount / goalCount);
-        int goal = (int) Math.min((int) Math.floor(BASE_LOGIN_COUNT * goalPercent), goalCount);
+        int goal = (int) Math.min((int) Math.floor(RandomUtils.random(BASE_LOGIN_COUNT) * goalPercent), goalCount);
 
         // Ensure login goal does not exceed max player count.
         int remaining = world.getPlayers().capacity() - world.getPlayerMap().size(); // Thread-safe version.

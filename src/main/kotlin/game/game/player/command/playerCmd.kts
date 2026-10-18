@@ -21,11 +21,6 @@ cmd("piscatoris") {
         plr.teleport(Zone.PISCATORIS_FISHING_COLONY.anchor, TeleportStyle.REGULAR)
     }
 }
-cmd("karamja") {
-    if ((plr.isBot || plr.rights >= RIGHTS_ADMIN) && !plr.status.isTeleBlocked() && plr.teleportDelay.ready(2)) {
-        plr.teleport(Zone.KARAMJA.anchor, TeleportStyle.REGULAR)
-    }
-}
 
 /**
  * A command that changes the password of a player.
@@ -62,7 +57,6 @@ cmd("commands") {
         for (name in commandMap[rights]) {
             questJournal.addLine("::$name")
         }
-        questJournal.newLine()
     }
 
     // And finally, open the quest journal!

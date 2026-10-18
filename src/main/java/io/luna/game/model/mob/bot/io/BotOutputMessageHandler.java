@@ -12,7 +12,6 @@ import io.luna.net.codec.ByteOrder;
 import io.luna.net.codec.MessageType;
 import io.luna.net.codec.ValueType;
 import io.luna.net.msg.GameMessage;
-import io.luna.net.msg.in.NumberInputMessageReader;
 import io.luna.net.msg.in.ButtonClickMessageReader;
 import io.luna.net.msg.in.ChatMessageReader;
 import io.luna.net.msg.in.CloseInterfaceMessageReader;
@@ -25,7 +24,10 @@ import io.luna.net.msg.in.ItemOnItemMessageReader;
 import io.luna.net.msg.in.ItemOnNpcMessageReader;
 import io.luna.net.msg.in.ItemOnObjectMessageReader;
 import io.luna.net.msg.in.ItemOnPlayerMessageReader;
+import io.luna.net.msg.in.MagicOnItemMessageReader;
+import io.luna.net.msg.in.MagicOnObjectMessageReader;
 import io.luna.net.msg.in.NpcClickMessageReader;
+import io.luna.net.msg.in.NumberInputMessageReader;
 import io.luna.net.msg.in.ObjectClickMessageReader;
 import io.luna.net.msg.in.PlayerClickMessageReader;
 import io.luna.net.msg.in.WidgetItemClickMessageReader;
@@ -156,6 +158,54 @@ public final class BotOutputMessageHandler {
     public BotOutputMessageHandler(BotClient client) {
         this.client = client;
         bot = client.getBot();
+    }
+
+    /**
+     * Sends the {@link MagicOnItemMessageReader} packet.
+     *
+     * @param spellId The spell widget identifier.
+     * @param targetInventoryIndex The inventory slot containing the target item.
+     * @param targetId The target item identifier.
+     * @return {@code true} if the packet was queued successfully.
+     */
+    public boolean useSpellOnItem(int spellId, int targetInventoryIndex, int targetId) {
+        if (!bot.getInventory().contains(targetInventoryIndex, targetId)) {
+            bot.log("Cannot cast spell on item: target item is not at the expected inventory index.");
+            return false;
+        }
+
+        ByteMessage msg = ByteMessage.raw();
+        msg.putShort(spellId);
+        msg.putShort(3214, ValueType.ADD);
+        msg.putShort(targetInventoryIndex, ValueType.ADD);
+        msg.putShort(targetId, ValueType.ADD);
+
+        client.queueSimulated(new GameMessage(36, MessageType.FIXED, msg));
+        return true;
+    }
+
+    /**
+     * Queues the normal {@link MagicOnObjectMessageReader} packet for a visible object.
+     * <p>
+     * Uses opcode 210 and the spell/id/x/y encoding declared by Luna's incoming message table and reader.
+     * The normal interaction event handles approach and gameplay validation. Queuing does not confirm that
+     * a spell completed; callers must check the spell's outcome, costs, and retry limits separately.
+     *
+     * @param spellId The spell widget identifier.
+     * @param targetObject The visible object to cast on, or {@code null} when no target is available.
+     * @return {@code true} if queued, otherwise {@code false} for a missing or invisible object.
+     */
+    public boolean useSpellOnObject(int spellId, GameObject targetObject) {
+        if (targetObject == null || !targetObject.isVisibleTo(bot)) {
+            return false;
+        }
+        ByteMessage msg = ByteMessage.raw();
+        msg.putShort(spellId);
+        msg.putShort(targetObject.getId(), ByteOrder.LITTLE);
+        msg.putShort(targetObject.getPosition().getX(), ValueType.ADD);
+        msg.putShort(targetObject.getPosition().getY(), ByteOrder.LITTLE);
+        client.queueSimulated(new GameMessage(210, MessageType.FIXED, msg));
+        return true;
     }
 
     /**
@@ -342,9 +392,9 @@ public final class BotOutputMessageHandler {
                 opcode = 24;
                 break;
             case 3:
-                msg.putShort(itemId, ValueType.ADD);
                 msg.putShort(index, ByteOrder.LITTLE, ValueType.ADD);
-                msg.putShort(3214, ByteOrder.LITTLE, ValueType.ADD);
+                msg.putShort(itemId, ByteOrder.LITTLE, ValueType.ADD);
+                msg.putShort(3214, ByteOrder.LITTLE);
                 opcode = 161;
                 break;
             case 4:
@@ -354,9 +404,9 @@ public final class BotOutputMessageHandler {
                 opcode = 228;
                 break;
             case 5:
-                msg.putShort(itemId, ValueType.ADD);
-                msg.putShort(3214);
-                msg.putShort(index, ValueType.ADD);
+                msg.putShort(index, ByteOrder.LITTLE);
+                msg.putShort(itemId, ByteOrder.LITTLE, ValueType.ADD);
+                msg.putShort(3214, ByteOrder.LITTLE, ValueType.ADD);
                 opcode = 4;
                 break;
             default:
@@ -521,9 +571,9 @@ public final class BotOutputMessageHandler {
                 opcode = 241;
                 break;
             case 3:
-                msg.putShort(x, ByteOrder.LITTLE);
-                msg.putShort(y);
-                msg.putShort(id, ByteOrder.LITTLE, ValueType.ADD);
+                msg.putShort(y, ValueType.ADD);
+                msg.putShort(id, ByteOrder.LITTLE);
+                msg.putShort(x, ByteOrder.LITTLE, ValueType.ADD);
                 opcode = 50;
                 break;
         }

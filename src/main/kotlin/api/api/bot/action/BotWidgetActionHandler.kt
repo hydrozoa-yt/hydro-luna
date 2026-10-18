@@ -50,8 +50,17 @@ class BotWidgetActionHandler(private val bot: Bot, private val handler: BotActio
      * @param amount The amount to make.
      */
     suspend fun clickMakeItem(index: Int, amount: Int) {
-        bot.overlays[MakeItemDialogue::class] ?: return
-        val button = INDEX_MAP[index] ?: return
+        val dialogue = bot.overlays[MakeItemDialogue::class] ?: return
+        if (index !in 0 until dialogue.length) return
+        // The client uses a different button group for each dialogue length (see engine.widget.make.makeItem).
+        val button = when (dialogue.length) {
+            1 -> ButtonIndex(make1 = 8893, index = 0)
+            2 -> ButtonIndex(make1 = 8874 + index * 4, index = index)
+            3 -> ButtonIndex(make1 = 8889 + index * 4, index = index)
+            4 -> ButtonIndex(make1 = 8909 + index * 4, index = index)
+            5 -> INDEX_MAP[index]
+            else -> null
+        } ?: return
         when (amount) {
             1 -> bot.output.clickButton(button.make1)
             5 -> bot.output.clickButton(button.make5)
@@ -125,6 +134,24 @@ class BotWidgetActionHandler(private val bot: Bot, private val handler: BotActio
         }
         bot.log("Clicking dialogue option $option.")
         return true
+    }
+
+    /**
+     * Clicks the option with some text on the currently open [OptionDialogue].
+     *
+     * @param text The text of the option, with any case.
+     *
+     * @return `true` if a supported dialogue interface was open with the option on it and a click was attempted, or
+     * `false` if not.
+     */
+    fun clickDialogueOption(text: String): Boolean {
+        val activeInterface = bot.overlays[OptionDialogue::class] ?: return false
+        val index = activeInterface.options.indexOfFirst { it.equals(text, ignoreCase = true) }
+        if (index == -1) {
+            bot.log("No dialogue option '$text' in ${activeInterface.options}.")
+            return false
+        }
+        return clickDialogueOption(index + 1)
     }
 
     /**

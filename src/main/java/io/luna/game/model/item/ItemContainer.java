@@ -1050,7 +1050,7 @@ public class ItemContainer implements Iterable<Item> {
      *
      * @return The list of indexed items with capacity {@link #size()}.
      */
-    public final List<IndexedItem> toList() {
+    public final List<IndexedItem> save() {
         var list = new ArrayList<IndexedItem>(size);
         for (int index = 0; index < capacity; index++) {
             Item item = get(index);
@@ -1097,7 +1097,7 @@ public class ItemContainer implements Iterable<Item> {
      * @return The item at that slot, or null if empty.
      */
     public final Item get(int index) {
-        checkArgument(index >= 0 && index < capacity, "Index " + index + " out of bounds!");
+        checkArgument(index >= 0 && index < capacity, "Index %s out of bounds!", index);
         return items[index];
     }
 

@@ -2,14 +2,15 @@ package api.bot.action
 
 import api.bot.Suspendable.naturalDelay
 import api.bot.SuspendableCondition
-import io.luna.game.model.mob.bot.Bot
 import api.predef.*
 import api.predef.ext.*
 import game.player.item.consume.food.Food
 import io.luna.game.model.Entity
 import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.Player
+import io.luna.game.model.mob.bot.Bot
 import io.luna.game.model.mob.dialogue.DestroyItemDialogue
+import io.luna.game.model.mob.interact.InteractionPolicy
 import io.luna.game.model.mob.movement.NavigationResult
 import io.luna.game.model.`object`.GameObject
 import io.luna.net.msg.`in`.ItemOnItemMessageReader
@@ -76,7 +77,9 @@ class BotInventoryActionHandler(private val bot: Bot, private val handler: BotAc
                 return false
             }
 
-            if (bot.navigator.navigate(target, true).await() != NavigationResult.NO_VALID_PATH) {
+            val navigationResult = bot.navigator.navigate(target, true).await()
+            if (navigationResult == NavigationResult.REACHED &&
+                world.collisionManager.reached(bot, target, InteractionPolicy.STANDARD_SIZE)) {
                 bot.log("Using ${itemName(usedId)} on $target.")
                 action(index)
                 return true
@@ -139,6 +142,33 @@ class BotInventoryActionHandler(private val bot: Bot, private val handler: BotAc
          */
         suspend fun onObject(target: GameObject) =
             useOnEntity(target) { bot.output.useItemOnObject(it, usedId, target) }
+    }
+
+    /**
+     * Casts a spell on an inventory item.
+     *
+     * If [index] is not supplied, the first inventory slot containing [id] is used.
+     *
+     * @param spellId The spell widget identifier.
+     * @param id The target item identifier.
+     * @param index The preferred inventory slot, or `-1` to search by item id.
+     * @return `true` if the magic-on-item packet was sent.
+     */
+    fun useSpellOnItem(spellId: Int, id: Int, index: Int = -1): Boolean {
+        val targetIndex = if (index == -1) bot.inventory.computeIndexForId(id) else index
+        if (targetIndex == -1) {
+            bot.log("Can't find ${itemName(id)}.")
+            return false
+        }
+
+        val targetId = bot.inventory[targetIndex]?.id
+        if (targetId != id) {
+            bot.log("Can't find ${itemName(id)} at index $targetIndex.")
+            return false
+        }
+
+        bot.log("Casting spell $spellId on ${itemName(id)}.")
+        return bot.output.useSpellOnItem(spellId, targetIndex, id)
     }
 
     /**
@@ -276,7 +306,7 @@ class BotInventoryActionHandler(private val bot: Bot, private val handler: BotAc
                     repeat(10) {
                         bot.output.sendInventoryItemClick(1, index, item.id)
                         bot.naturalDelay()
-                        if(bot.healthPercent > lastHealth || bot.healthPercent == 100) {
+                        if (bot.healthPercent > lastHealth || bot.healthPercent == 100) {
                             return true
                         }
                     }

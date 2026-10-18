@@ -4,7 +4,7 @@ import api.bot.Suspendable.naturalMicroDelay
 import api.bot.Suspendable.waitFor
 import api.bot.script.BotScriptData
 import api.bot.script.InventoryBotScript
-import api.bot.script.ZonedBotScript.Companion.ZonedBotScriptData
+import api.bot.script.InventoryBotScript.Companion.InventoryScriptData
 import api.bot.zone.SubZone
 import api.predef.*
 import com.google.gson.JsonObject
@@ -17,7 +17,7 @@ import io.luna.game.model.EntityState
 import io.luna.game.model.Position
 import io.luna.game.model.item.Item
 import io.luna.game.model.mob.bot.Bot
-import io.luna.game.model.path.PlayerPathfinder
+import io.luna.game.model.path.Pathfinders
 import kotlinx.coroutines.future.await
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Trains Firemaking by burning banked logs in straight lines at a [FiremakingSpot].
  *
- * The script withdraws a tinderbox and [LOGS_PER_TRIP] logs of one [log] type, walks to the eastern end of a
+ * The script withdraws a tinderbox and up to [LOGS_PER_TRIP] logs of one [log] type, walks to the eastern end of a
  * [FiremakingLane] beside the bank, and lights one log after another. Each fire steps the bot one tile west, so the
  * fires form a straight line. When the lane runs out or a fire is in the way, the bot picks another lane, and once its
  * logs are gone it banks for more. When the bank runs low, the script queues a Woodcutting script and stops.
@@ -33,11 +33,20 @@ import kotlin.time.Duration.Companion.seconds
  * Only one bot firemakes at each spot. A bot that finds its spot taken, or every lane there burning, rejects the zone
  * so another one can be tried.
  *
+ * Partial final batches are burned before gathering more logs. Startup counts inventory and bank supplies;
+ * each bank visit sizes its batch from deposited bank stock. Inherited withdrawal verification requires
+ * both unnoted logs and the tinderbox to reach the inventory. Forced bank requests use the inherited
+ * bounded retry budget; verified withdrawals reset it, and snapshots retain it across resumes.
+ * Pausing, finishing, and changing zones release the claimed spot and discard the transient lane.
+ *
  * @property log The type of log this script burns.
+ * @author lare96
  * @author TheLining
  */
 class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: MutableList<SubZone>) :
     InventoryBotScript(bot, duration, zones) {
+
+    override val verifiedProductionWithdrawals = true
 
     companion object {
 
@@ -62,10 +71,12 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
         /**
          * Serializable data used to save and restore a [FiremakingBotScript].
          *
-         * This extends [ZonedBotScriptData] with the [Log] type being burned, allowing the script to resume with the
-         * same logs, remaining duration, and candidate zones.
+         * This extends [InventoryScriptData] with the [Log] type being burned, allowing the script to resume with the
+         * same logs, remaining duration, candidate zones, and retry counters. Older snapshots default counters to zero.
+         *
+         * @author lare96
          */
-        class FiremakingData : ZonedBotScriptData() {
+        class FiremakingData : InventoryScriptData() {
 
             /**
              * The type of log the bot should burn.
@@ -209,20 +220,31 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
      * @param bot The bot that owns this script.
      * @param data The previously saved firemaking script data.
      */
-    constructor(bot: Bot, data: FiremakingData) : this(bot, data.log, data.duration, data.zones)
+    constructor(bot: Bot, data: FiremakingData) : this(bot, data.log, data.duration, data.zones) {
+        restoreInventoryState(data)
+    }
 
     /**
      * The lane the bot is burning logs along, or `null` if it needs a new one.
      */
     private var lane: FiremakingLane? = null
 
-    override fun withdraw(): List<Item> {
+    override fun withdraw(): List<Item> = withdrawBatch(bankOnly = false)
+
+    override fun bankWithdraw(): List<Item> = withdrawBatch(bankOnly = true)
+
+    /**
+     * Sizes a partial batch from owned startup supplies or deposited bank stock after banking.
+     */
+    private fun withdrawBatch(bankOnly: Boolean): List<Item> {
+        if (!bankOnly && productionRetriesExhausted()) { stop(); return emptyList() }
         if (bot.firemaking.staticLevel < log.level) {
             bot.log("I need Firemaking level ${log.level} to burn ${itemName(log.id)}.")
             stop()
             return emptyList()
         }
-        if (bot.itemTracker.count(log.id) < LOGS_PER_TRIP) {
+        val stock = if (bankOnly) bot.bank.computeAmountForId(log.id) else bot.itemTracker.count(log.id)
+        if (stock < 1) {
             bot.log("I don't have enough ${itemName(log.id)} to burn.")
             chopMoreLogs()
             return emptyList()
@@ -231,11 +253,11 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
             // Emergency spawn tinderbox if needed.
             bot.bank.add(Item(TINDERBOX))
         }
-        return listOf(Item(TINDERBOX), Item(log.id, LOGS_PER_TRIP))
+        return listOf(Item(TINDERBOX), Item(log.id, minOf(stock, LOGS_PER_TRIP)))
     }
 
     override suspend fun onExecuteInZone(): Boolean {
-        if (log.id !in bot.inventory && bot.bank.computeAmountForId(log.id) < LOGS_PER_TRIP) {
+        if (log.id !in bot.inventory && bot.bank.computeAmountForId(log.id) < 1) {
             bot.log("I've burned all of my ${itemName(log.id)}.")
             chopMoreLogs()
             return true
@@ -273,20 +295,27 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
     }
 
     override suspend fun onInventoryBankRequested(): Boolean {
-        // We start with a full inventory, so only bank once we run out of logs.
-        return forceBanking
+        // Only bank once the carried batch runs out of logs.
+        return forceBanking && requestProductionBank(canContinue = false)
     }
 
-    override fun onNewActiveZone(lastZone: SubZone?) {
-        // Our lane and spot belong to the zone we're leaving. This also runs when the script pauses.
+    override fun onPaused() = releaseSpot()
+
+    override suspend fun finish() = releaseSpot()
+
+    override suspend fun onNewActiveZone(lastZone: SubZone?) = releaseSpot()
+
+    /**
+     * Releases this session's spot claim and lane without changing another firemaker's claim.
+     */
+    private fun releaseSpot() {
         lane = null
         FiremakingSpot.leave(this)
     }
 
     override fun snapshot(): BotScriptData {
         val data = FiremakingData()
-        data.duration = duration
-        data.zones = originalZones.toMutableList()
+        saveInventoryState(data)
         data.log = log
         return data
     }
@@ -320,8 +349,8 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
     }
 
     /**
-     * Walks onto [tile]. Navigating would stop the bot a tile short, so this walks a player path like
-     * [api.bot.zone.WalkingTravelStrategy] does.
+     * Walks onto [tile]. Navigating would stop the bot a tile short, so this walks a bot route straight to
+     * the tile, like [api.bot.zone.WalkingTravelStrategy] does.
      *
      * @return `true` if the bot is standing on [tile].
      */
@@ -330,7 +359,7 @@ class FiremakingBotScript(bot: Bot, val log: Log, duration: Duration, zones: Mut
             return true
         }
         val path =
-            bot.navigator.findPath(bot.position, tile, PlayerPathfinder(world.collisionManager, bot.z), true).await()
+            bot.navigator.findPath(bot.position, tile, Pathfinders.forBot(bot), true).await()
         if (path?.peekLast() != tile) {
             return false
         }

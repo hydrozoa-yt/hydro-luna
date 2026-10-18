@@ -9,12 +9,14 @@ import api.bot.zone.SubZone
 import api.predef.*
 import com.google.common.collect.ImmutableSetMultimap
 import com.google.common.collect.SetMultimap
+import com.google.gson.JsonObject
 import engine.bot.gear.BotGearLocator
 import engine.bot.gear.BotGearPurpose
 import engine.bot.gear.BotGearSelector
 import engine.bot.gear.BotItemTracker.Companion.itemTracker
 import game.skill.fishing.catchFish.Fish
 import game.skill.herblore.identifyHerb.Herb
+import game.skill.magic.Magic
 import game.skill.magic.Staff
 import game.skill.mining.Ore
 import game.skill.prayer.Bone
@@ -23,28 +25,80 @@ import game.skill.smithing.smithBar.SmithingTable
 import game.skill.woodcutting.cutTree.Tree
 import io.luna.game.model.Position
 import io.luna.game.model.def.CombatStyleDefinition
+import io.luna.game.model.def.CombatSpellDefinition
+import io.luna.game.model.item.Item
+import io.luna.game.model.mob.combat.CombatSpell
 import io.luna.game.model.item.DeathGroundItem
+import io.luna.game.model.item.Equipment
+import io.luna.game.model.item.GroundItem
 import io.luna.game.model.mob.Npc
 import io.luna.game.model.mob.Skill
 import io.luna.game.model.mob.bot.Bot
+import io.luna.game.model.mob.bot.brain.BotPersonalityManager.PersonalityTemplateType
+import io.luna.game.model.mob.combat.CombatAction
 import io.luna.game.model.mob.combat.CombatStance
 import io.luna.game.model.mob.varp.PersistentVarp
-import io.luna.game.model.path.PlayerPathfinder
-import io.luna.net.msg.out.GameChatboxMessageWriter
-import kotlinx.coroutines.future.await
-import java.time.Instant
+import io.luna.util.GsonUtils
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-// TODO rename to fightnpcbotscript
-class NpcCombatScript(bot: Bot,
-                      duration: Duration,
-                      zones: MutableList<SubZone>,
-                      private val names: SetMultimap<SubZone, String> = ImmutableSetMultimap.of()) :
+/**
+ * Fights configured NPCs using owned melee, ranged or elemental autocast supplies.
+ * The existing targeting and banking lifecycle handles travel, replenishment and bounded target searches.
+ *
+ * @property purpose The combat discipline retained throughout this session.
+ * @property spell The elemental spell selected for a Magic session, preserved when saving.
+ * @author lare96
+ */
+open class NpcCombatScript(bot: Bot,
+                           duration: Duration,
+                           zones: MutableList<SubZone>,
+                           private val names: SetMultimap<SubZone, String> = ImmutableSetMultimap.of(),
+                           val purpose: BotGearPurpose = BotGearPurpose.MELEE,
+                           private var spell: CombatSpell? = null) :
     TargetingZonedBotScript<Npc>(bot, duration, zones) {
 
     // todo zone selection should happen BEFORE equipment/banking. so that we can prepare for the zone to travel to
     companion object {
+
+        /** Camps that require an equipped anti-dragon shield before fighting. */
+        val DRAGON_ZONES = setOf(
+            SubZone.GREEN_DRAGONS
+        )
+
+        /** Per-zone NPC restrictions must survive script persistence. */
+        open class NpcCombatData : ZonedBotScriptData() {
+            /** Exact NPC names accepted for deliberate target selection in each saved camp. */
+            var names: SetMultimap<SubZone, String> = ImmutableSetMultimap.of()
+
+            /** Legacy sessions default to melee; new sessions retain their discipline and spell. */
+            var purpose: BotGearPurpose = BotGearPurpose.MELEE
+            /** Optional elemental autocast spell; absent in older melee sessions. */
+            var spell: CombatSpell? = null
+
+            override fun load(data: JsonObject) {
+                super.load(data)
+                purpose = data.get("purpose")?.asString?.let(BotGearPurpose::valueOf) ?: BotGearPurpose.MELEE
+                spell = data.get("spell")?.takeUnless { it.isJsonNull }?.asString?.let(CombatSpell::valueOf)
+                val builder = ImmutableSetMultimap.builder<SubZone, String>()
+                val savedNames = data.get("names")?.takeUnless { it.isJsonNull }?.asJsonObject
+                savedNames?.entrySet()?.forEach { (zone, npcs) ->
+                    npcs.asJsonArray.forEach { builder.put(SubZone.valueOf(zone), it.asString) }
+                }
+                names = builder.build()
+            }
+
+            override fun save(data: JsonObject) {
+                super.save(data)
+                data.addProperty("purpose", purpose.name)
+                spell?.let { data.addProperty("spell", it.name) }
+                val savedNames = JsonObject()
+                names.asMap().forEach { (zone, npcs) ->
+                    savedNames.add(zone.name, GsonUtils.toJsonTree(npcs))
+                }
+                data.add("names", savedNames)
+            }
+        }
 
         // when looting sort by wanted item, etc etc value
         //  add all noted versions as well
@@ -69,30 +123,48 @@ class NpcCombatScript(bot: Bot,
 
     }
 
-    constructor(bot: Bot, data: ZonedBotScriptData) : this(bot, data.duration, data.zones)
+    // Retain the base-data constructor so existing persisted scripts still load.
+    constructor(bot: Bot, data: ZonedBotScriptData) : this(bot, data.duration, data.zones,
+                                                           (data as? NpcCombatData)?.names ?: ImmutableSetMultimap.of(),
+                                                           (data as? NpcCombatData)?.purpose ?: BotGearPurpose.MELEE,
+                                                           (data as? NpcCombatData)?.spell)
 
-    override suspend fun equipment(): BotGearLocator {
-        // Higher chance to train melee.
-        // TODO Chance based on bot personality?
-        // TODO Functions for magic and ranged combat (perfect melee first)
-        return BotGearSelector.find(bot, setOf(BotGearPurpose.MELEE)).buildLocator()
+    /** Selected owned gear; resumed sessions validate their actual equipment before attacking. */
+    private var loadout: NpcCombatLoadout? = null
+    /** Style selection happens after gear is equipped, and is retained until the next bank visit. */
+    private var combatConfigured = false
+
+    override suspend fun equipment(): BotGearLocator = BotGearLocator(bot, loadout!!.gear)
+
+    override suspend fun onEquipmentFailed(equipmentLocator: BotGearLocator) {
+        stop()
     }
 
     override suspend fun onInit(resumed: Boolean): Boolean {
+        if(bot.personality.type == PersonalityTemplateType.SKILLER) {
+            // Skillers do not engage in combat.
+            handler.combat.fleeCombat()
+            return false
+        }
+
         bot.reflex.isDisableCombatReflex = true
         bot.sendVarp(PersistentVarp.AUTO_RETALIATE, 1)
 
-        bot.combat.weapon.changeStyle(selectCombatStyle().button)
+        loadout = NpcCombatLoadout.find(bot, purpose, spell) ?: return false
+        spell = loadout!!.spell?.spell
+        if (resumed && !prepareCombat()) forceBanking = true
         return true
     }
 
 
     override suspend fun finish() {
         bot.reflex.isDisableCombatReflex = false
+        clearMagic()
     }
 
     override suspend fun find(searchBase: Position, searchRadius: Int): MutableCollection<Npc> {
         eatFood()
+        if (!prepareCombat()) return mutableListOf()
         if (bot.combat.inCombat() && bot.combat.lastCombatWith is Npc) {
             return mutableListOf(bot.combat.lastCombatWith as Npc)
         }
@@ -107,21 +179,63 @@ class NpcCombatScript(bot: Bot,
     }
 
     override suspend fun onBankRequestedTargeting(initial: Boolean): Boolean {
-        // todo eat food, bury bones, drop junk, etc. then check again
+        combatConfigured = false
+        bot.combat.target = null
+        clearMagic()
         return true
     }
 
+    /** Dragon protection is withdrawn from owned stock rather than generated during banking. */
+    private val antiDragonShield = item("Anti-dragon shield")
     override suspend fun onBankOpen(initial: Boolean) {
+
+        if (DRAGON_ZONES.any { it in originalZones } && 1540 !in bot.equipment &&
+            !handler.banking.withdraw(antiDragonShield)) {
+            bot.preferences.addWantedItem(1540, 3)
+            stop()
+            return
+        }
+        val selected = loadout ?: return
+        val weapon = selected.gear[Equipment.WEAPON]
+        if (weapon != null && bot.equipment.weapon?.id != weapon &&
+            (!handler.banking.withdraw(Item(weapon, if (purpose == BotGearPurpose.RANGED &&
+                selected.gear[Equipment.AMMUNITION] == null) 500 else 1)) || !handler.equipment.equip(weapon))) {
+            bot.preferences.addWantedItem(weapon, if (purpose == BotGearPurpose.RANGED &&
+                selected.gear[Equipment.AMMUNITION] == null) 1000 else 3)
+            stop()
+            return
+        }
+        if (purpose == BotGearPurpose.RANGED) {
+            val id = selected.gear[Equipment.AMMUNITION] ?: weapon
+            if (id == null || (bot.equipment.computeAmountForId(id) == 0 &&
+                    (!handler.banking.withdraw(Item(id, 500)) || !handler.equipment.equip(id)))) {
+                id?.let { bot.preferences.addWantedItem(it, 1000) }
+                stop()
+                return
+            }
+        }
+        for ((id, amount) in selected.runes) {
+            if (!handler.banking.withdraw(Item(id, amount * 500)) || bot.inventory.computeAmountForId(id) < amount) {
+                bot.preferences.addWantedItem(id, 1000)
+                stop()
+                return
+            }
+        }
+        if (!prepareCombat()) {
+            stop()
+            return
+        }
         if (!handler.inventory.hasAnyFood()) {
             // todo change minimum heal scaling to combat level
             handler.banking.withdrawAnyFood(amount = 8)
         }
+
     }
 
-    override fun onNewActiveZone(lastZone: SubZone?) {
-        if (lastZone != activeZone && activeZone == SubZone.GREEN_DRAGONS) {
-            // todo ensure we have an anti-dragon shield
-            // onBankOpen(true)
+    override suspend fun onNewActiveZone(lastZone: SubZone?) {
+        if (activeZone in DRAGON_ZONES && 1540 !in bot.equipment &&
+            (1540 !in bot.inventory || !handler.equipment.equip(1540) || bot.equipment.weapon == null)) {
+            stop()
         }
     }
     // todo auto bury bones after each kill
@@ -134,29 +248,11 @@ class NpcCombatScript(bot: Bot,
 
     // todo discard focus if not reachable.
     override suspend fun onExecuteInZone(searching: Boolean) {
-        if (bot.combat.weapon.isRanged) {
-            val threshold = Instant.now().minusSeconds(15)
-            if (bot.combat.lastAttackSent?.timestamp?.isBefore(threshold) ?: true) {
-                val messages = bot.input.received[GameChatboxMessageWriter::class.java].reversed()
-                for (inMsg in messages) {
-                    val msg = inMsg.message
-                    if (inMsg.timestamp.isAfter(threshold) && msg is GameChatboxMessageWriter) {
-                        if (msg.message == "You have no arrows left in your quiver." ||
-                            msg.message == "You can't use that type of ammunition with this weapon."
-                        ) {
-                            stop()
-                            bot.log("No valid ammo left. Stopping script.")
-                            return
-                        }
-                    }
-                }
-                bot.input.clear()
-            }
-
-        }
-
+        if (!prepareCombat()) return
         eatFood()
-        if (bot.combat.lastCombatWith != null && bot.combat.inCombat()) {
+        if (bot.combat.lastCombatWith?.isAlive == true && bot.combat.inCombat() &&
+            !bot.actions.contains(CombatAction::class.java)
+        ) {
             handler.interactions.interact(3, bot.combat.lastCombatWith)
             bot.naturalDelay()
         } else if (focus?.isAlive != true) {
@@ -165,12 +261,13 @@ class NpcCombatScript(bot: Bot,
     }
 
     override suspend fun refocus(): Boolean {
+        if (!prepareCombat()) return true
         eatFood()
-        if (focus?.isAlive != true || bot.combat.lastCombatWith == null) {
+        if (focus?.isAlive != true) {
             lootItems()
             return true
         }
-        if (bot.combat.inCombat() && bot.combat.target == focus && focus?.isAlive == true) {
+        if (bot.combat.target == focus && bot.actions.contains(CombatAction::class.java)) {
             return false
         }
         if (!bot.combat.checkMultiCombat(focus)) {
@@ -180,13 +277,10 @@ class NpcCombatScript(bot: Bot,
             } else {
                 handler.combat.fleeCombat()
             }
-        }
-        if (bot.walking.isEmpty && !bot.combat.inCombat()) {
-            bot.navigator.navigate(activeZone!!.inside, true)
-                .await() // Temporary, pathfinding sucks sometimes bots get stuck
             return true
         }
-        return false
+        // Retry the current target through the same click path as a human, and abandon it on failure.
+        return !handler.interactions.interact(3, focus)
     }
 
     override suspend fun onAssignFocus(newFocus: Npc): Boolean {
@@ -201,36 +295,22 @@ class NpcCombatScript(bot: Bot,
 
     override suspend fun interactionOption(target: Npc): Int? {
         eatFood()
-        val start = bot.position
-        val destination = target.position
-        val startedAt = System.nanoTime()
-        val path = bot.navigator.findPath(start,
-                                         destination,
-                                         PlayerPathfinder(bot.world.collisionManager, start.z),
-                                         true).await()
-        val endpoint = path?.peekLast()
-        if (endpoint?.isWithinDistance(target.position, 2) != true) {
-            bot.log("Rejected combat target id=${target.id}: start=$start, " +
-                    "requested=$destination, current=${target.position}, endpoint=$endpoint, " +
-                    "pathSize=${path?.size}, elapsedMs=${(System.nanoTime() - startedAt) / 1_000_000}.")
-            return null
-        }
-        bot.combat.attack(target)
-        bot.naturalDelay()
-        return 3
+        return if (prepareCombat()) 3 else null
     }
 
-    override fun snapshot(): ZonedBotScriptData {
-        val data = ZonedBotScriptData()
+    override fun snapshot(): NpcCombatData {
+        val data = NpcCombatData()
         data.duration = duration
         data.zones = originalZones.toMutableList()
+        data.names = ImmutableSetMultimap.copyOf(names)
+        data.purpose = purpose
+        data.spell = spell
         return data
     }
 
     // todo static set of valid npcs
-    private val alwaysValid = setOf("Rock Crab")
     private fun canAttack(npc: Npc): Boolean {
-        if (bot.combat.lastCombatWith == npc || npc.combat.target == bot || npc.def().name in alwaysValid) {
+        if (npc.combat.target == bot) {
             return true
         }
         val zone = activeZone
@@ -244,12 +324,17 @@ class NpcCombatScript(bot: Bot,
         return npc.combatLevel < 15 || npc.combatLevel / 2 < bot.combatLevel
     }
 
+    /**
+     * Determines if the bot should pick up [item] after a kill.
+     */
+    protected open fun isLoot(item: GroundItem): Boolean {
+        return item is DeathGroundItem || item.id in ALL_LOOT_ITEMS.value
+    }
+
     private suspend fun lootItems() {
         eatFood()
         delay(2.seconds, 4.seconds)
-        val groundItems = world.locator.findViewableItems(bot) {
-            (it is DeathGroundItem || it.id in ALL_LOOT_ITEMS.value) && it.isVisibleTo(bot)
-        }
+        val groundItems = world.locator.findViewableItems(bot) { isLoot(it) && it.isVisibleTo(bot) }
         for (item in groundItems) {
             val inventoryItem = item.toItem()
             val countBefore = bot.itemTracker.count(inventoryItem.id)
@@ -275,14 +360,68 @@ class NpcCombatScript(bot: Bot,
         }
     }
 
-    // FINALIZED vv
+    /** Clears pending manual spells and autocast so another script cannot inherit this session's spell. */
+    private fun clearMagic() {
+        bot.combat.magic.selectedSpell = CombatSpellDefinition.NONE
+        bot.combat.magic.autocastSpell = CombatSpellDefinition.NONE
+        bot.combat.magic.isAutocasting = false
+        bot.combat.magic.refreshAutocast()
+    }
+
+    /** Validates actual equipment and one attack's supplies before permitting any attack click. */
+    internal fun prepareCombat(): Boolean {
+        // Existing melee callers retain their click behavior before initialization.
+        val selected = loadout ?: return purpose == BotGearPurpose.MELEE
+        val weapon = selected.gear[Equipment.WEAPON]
+        if (weapon == null && bot.equipment.weapon != null) {
+            stop()
+            return false
+        }
+        if (weapon != null && bot.equipment.weapon?.id != weapon) {
+            combatConfigured = false
+            clearMagic()
+            forceBanking = true
+            return false
+        }
+        if (purpose == BotGearPurpose.MAGIC) {
+            val definition = selected.spell ?: return false
+            if (bot.spellbook != definition.spellbook || bot.magic.level < definition.level) {
+                clearMagic()
+                stop()
+                return false
+            }
+            if (Magic.checkRequirements(bot, definition, true) == null) {
+                combatConfigured = false
+                clearMagic()
+                forceBanking = true
+                return false
+            }
+            if (!combatConfigured || !bot.combat.magic.isAutocasting || bot.combat.magic.autocastSpell != definition) {
+                combatConfigured = handler.combat.setAutocastSpell(definition)
+            }
+            return combatConfigured
+        }
+        if (!combatConfigured) clearMagic()
+        if (purpose == BotGearPurpose.RANGED) {
+            val ammo = selected.gear[Equipment.AMMUNITION] ?: weapon
+            if (ammo == null || bot.equipment.computeAmountForId(ammo) == 0) {
+                forceBanking = true
+                return false
+            }
+        }
+        if (!combatConfigured) {
+            bot.combat.weapon.changeStyle(selectCombatStyle().button)
+            combatConfigured = true
+        }
+        return true
+    }
 
     private fun selectCombatStyle(): CombatStyleDefinition {
-        // todo Global bot "getstyle" method or "getValidSkills" function so we can do pures, zerkers, etc.
-        // todo If need arrows but dont have, make the bot start a fletching script.
-        // todo Magic and ranged.
 
         val styles = bot.combat.weapon.typeDef.styles
+        if (purpose == BotGearPurpose.RANGED) {
+            return styles.firstOrNull { Skill.RANGED in it.exp } ?: styles.first()
+        }
 
         fun getDefaultStyle(): CombatStyleDefinition {
             return if (bot.personality.isIntelligent && randBoolean() && bot.strength.staticLevel < 99)

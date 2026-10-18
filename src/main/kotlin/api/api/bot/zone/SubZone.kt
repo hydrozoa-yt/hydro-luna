@@ -11,10 +11,14 @@ import com.google.common.collect.HashMultimap
 import com.google.common.collect.ImmutableSetMultimap
 import engine.bot.gear.BotItemTracker.Companion.itemTracker
 import game.skill.runecrafting.enterAltar.Altar
+import io.luna.game.model.EntityState
 import io.luna.game.model.Position
 import io.luna.game.model.area.SimpleBoxArea
 import io.luna.game.model.mob.bot.Bot
+import io.luna.game.model.mob.movement.NavigationResult
 import kotlinx.coroutines.future.await
+import java.util.*
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * A smaller rectangular bot activity area within a broader [Zone].
@@ -38,6 +42,33 @@ enum class SubZone(val inside: Position,
                    val outside: Bot.() -> Position? = { null },
                    val area: SimpleBoxArea,
                    val parent: Bot.() -> Zone) {
+    /**
+     * Full Gnome course footprint, including the upper platforms used by native obstacles.
+     */
+    GNOME_STRONGHOLD_AGILITY(inside = Position(2474, 3437),
+                             area = SimpleBoxArea.ofRadius(2467, 3413, 25, 29),
+                             parent = { GNOME_STRONGHOLD }),
+
+    /** Water-obelisk activity area, with Catherby banking and shared travel fallback. */
+    WATER_OBELISK(inside = Position(2844, 3425),
+                   area = SimpleBoxArea.ofRadius(2829, 3415, 35, 20),
+                   parent = { CATHERBY }),
+
+    /** Fire-obelisk activity area, using Taverly and the shared travel/banking fallback. */
+    FIRE_OBELISK(inside = Position(2821, 9827),
+                  area = SimpleBoxArea.ofRadius(2814, 9824, 9, 9),
+                  parent = { TAVERLY }),
+
+    /** Air-obelisk activity area, with Edgeville banking and shared travel fallback. */
+    AIR_OBELISK(inside = Position(3089, 3571),
+                 area = SimpleBoxArea.ofRadius(3082, 3564, 12, 13),
+                 parent = { EDGEVILLE }),
+
+    /** Earth-obelisk activity area, with Edgeville banking and shared travel fallback. */
+    EARTH_OBELISK(inside = Position(3087, 9935),
+                   area = SimpleBoxArea.ofRadius(3081, 9929, 13, 15),
+                   parent = { EDGEVILLE }),
+
     HAM_CULT(inside = Position(3149, 9652),
              outside = { Position(3167, 3246) },
              area = SimpleBoxArea.of(3135, 9606, 3189, 9660),
@@ -123,8 +154,18 @@ enum class SubZone(val inside: Position,
                      parent = { AL_KHARID }),
 
     /**
-     * The Edgeville monastery. Used for low-level -> mid-level combat training.
+     * Iorwerth camp and its loom in Tirannwn.
      */
+    IORWERTH_CAMP(inside = Position(2204, 3253),
+                   area = SimpleBoxArea.ofRadius(2184, 3239, 30, 27),
+                   parent = { TIRANNWN }),
+
+    /** The loom south of Falador, reached through the existing zone travel fallback. */
+    SOUTH_FALADOR_LOOM(inside = Position(3039, 3288),
+                        area = SimpleBoxArea.ofRadius(3038, 3285, 3, 4),
+                        parent = { FALADOR }),
+
+    /** The Edgeville monastery, used for low-level to mid-level combat training. */
     EDGEVILLE_MONASTERY(inside = Position(3051, 3482),
                         area = SimpleBoxArea.of(3041, 3480, 3062, 3509),
                         parent = { EDGEVILLE }),
@@ -237,21 +278,29 @@ enum class SubZone(val inside: Position,
                 if (!bot.isViewableFrom(aubury)) {
                     bot.log(
                         "Aubury is no longer viewable but bot is not inside essence mine. " +
-                                "bot=${bot.position}, subZone=${bot.subZone}"
+                                "bot=${bot.position}, subZones=${bot.subZones}"
                     )
                     break
                 }
 
                 if (bot.walking.isEmpty) {
-                    bot.log("Clicking Aubury essence teleport. bot=${bot.position}, subZone=${bot.subZone}")
-                    bot.actionHandler.interactions.interact(4, aubury)
+                    bot.log("Clicking Aubury essence teleport. bot=${bot.position}, subZones=${bot.subZones}")
+                    val interacted = bot.actionHandler.interactions.interact(4, aubury)
+                    // A queued teleport can arrive before the interaction confirmation finishes.
+                    if (area.contains(bot)) {
+                        break
+                    }
+                    if (!interacted) {
+                        bot.log("Aubury interaction failed before mine entry. Returning to travel recovery.")
+                        return false
+                    }
                 }
 
                 bot.naturalDecisionDelay()
             }
 
             val entered = waitFor { area.contains(bot) }
-            bot.log("Essence mine enter result=$entered, bot=${bot.position}, subZone=${bot.subZone}")
+            bot.log("Essence mine enter result=$entered, bot=${bot.position}, subZones=${bot.subZones}")
             return entered
         }
 
@@ -332,8 +381,10 @@ enum class SubZone(val inside: Position,
 
         override suspend fun enter(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
             if (bot.actionHandler.travelTo(BURTHORPE)) {
-                // Navigate to the trapdoor that leads us into the dungeon.
-                bot.navigator.navigate(selectedOutside, true).await()
+                // Walk to the trapdoor that leads us into the dungeon.
+                if (selectedOutside != null) {
+                    bot.actionHandler.webWalkTo(selectedOutside)
+                }
                 if (selectedOutside?.isViewableFrom(bot) == false) {
                     return false
                 }
@@ -374,8 +425,10 @@ enum class SubZone(val inside: Position,
         override suspend fun enter(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
             if (bot.isViewableFrom(selectedOutside) || bot.actionHandler.travelTo(VARROCK)) {
 
-                // Navigate to the ladder that leads us into the dungeon.
-                bot.navigator.navigate(selectedOutside, true).await()
+                // Walk to the ladder that leads us into the dungeon.
+                if (selectedOutside != null) {
+                    bot.actionHandler.webWalkTo(selectedOutside)
+                }
                 if (selectedOutside?.isViewableFrom(bot) == false) {
                     return false
                 }
@@ -439,7 +492,9 @@ enum class SubZone(val inside: Position,
      * - 2 bait fishing spots
      */
     LUMBRIDGE_RIVER(inside = Position(3249, 3228),
-                    area = SimpleBoxArea.of(3234, 3227, 3261, 3251),
+                    // Wide enough that the target search, a square around the centre, reaches the fishing spot
+                    // tiles at 3238,3254 and 3238,3255 without overlapping the cow pen.
+                    area = SimpleBoxArea.of(3234, 3227, 3265, 3251),
                     parent =
                     { LUMBRIDGE }),
 
@@ -534,7 +589,7 @@ enum class SubZone(val inside: Position,
      * - Lobster pot fishing
      */
     EAST_CATHERBY_FISHING(inside = Position(2838, 3435),
-                          area = SimpleBoxArea.of(2829, 3417, 2864, 3437),
+                          area = SimpleBoxArea.ofRadius(2829, 3415, 35, 20),
                           parent =
                           { CATHERBY }),
 
@@ -544,6 +599,14 @@ enum class SubZone(val inside: Position,
     PISCATORIS_FISHING_COLONY_MAIN(inside = PISCATORIS_FISHING_COLONY.anchor,
                                    area = SimpleBoxArea.of(2306, 3663, 2363, 3705),
                                    parent = { PISCATORIS_FISHING_COLONY }),
+
+    /**
+     * The warrior women west of Ardougne market. Intended for level 25-39 pickpocket training.
+     * Covers both warrior-woman spawns and their five-tile wander range.
+     */
+    ARDOUGNE_WARRIOR_THIEVING(inside = Position(2629, 3295),
+                              area = SimpleBoxArea.of(2624, 3290, 2637, 3304),
+                              parent = { ARDOUGNE }),
 
     /**
      * The Ardougne market square. Intended for dexterous thieving trainers and low -> mid-range level money-makers.
@@ -611,6 +674,144 @@ enum class SubZone(val inside: Position,
                            { SEERS_VILLAGE }),
 
     /**
+     * The magic trees between the Sorcerer's Tower and the yews south of Seers' Village. Intended for high-level
+     * woodcutters and money-makers.
+     * - 3 magic trees
+     * - Normal trees
+     * - Oak trees
+     */
+    SOUTH_SEERS_VILLAGE_MAGICS(inside = Position(2691, 3426),
+                               area = SimpleBoxArea.of(2685, 3419, 2710, 3435),
+                               parent =
+                               { SEERS_VILLAGE }),
+
+    /**
+     * The maple trees south of the Sorcerer's Tower. Intended for mid-level woodcutters and money-makers.
+     * - 6 maple trees
+     * - Normal trees
+     * - Oak trees
+     */
+    SOUTH_SORCERERS_TOWER_MAPLES(inside = Position(2713, 3376),
+                                 area = SimpleBoxArea.of(2700, 3360, 2720, 3388),
+                                 parent =
+                                 { SEERS_VILLAGE }),
+
+    /**
+     * The maple trees north-west of Seers' Village. Intended for mid-level woodcutters and money-makers.
+     * - 25 maple trees
+     * - 5 willow trees
+     * - Normal trees
+     */
+    NORTH_WEST_SEERS_VILLAGE_MAPLES(inside = Position(2668, 3531),
+                                    area = SimpleBoxArea.of(2648, 3515, 2701, 3546),
+                                    parent =
+                                    { SEERS_VILLAGE }),
+
+    /**
+     * The maple forest north of Seers' Village. Intended for mid -> high level woodcutters and money-makers.
+     * - 43 maple trees
+     * - Normal trees
+     * - Oak trees
+     */
+    NORTH_SEERS_VILLAGE_MAPLES(inside = Position(2707, 3563),
+                               area = SimpleBoxArea.of(2660, 3547, 2735, 3592),
+                               parent =
+                               { SEERS_VILLAGE }),
+
+    /**
+     * The willow trees on the beach west of the Catherby bank. Intended for dexterous willow trainers.
+     * - 3 willow trees
+     */
+    CATHERBY_BEACH_WILLOWS(inside = Position(2783, 3428),
+                           area = SimpleBoxArea.of(2775, 3418, 2800, 3434),
+                           parent =
+                           { CATHERBY }),
+
+    /**
+     * The trees north of Catherby. Intended for low-level woodcutters.
+     * - Normal trees
+     * - Oak trees
+     */
+    NORTH_CATHERBY_TREES(inside = Position(2783, 3459),
+                         area = SimpleBoxArea.of(2760, 3436, 2805, 3480),
+                         parent =
+                         { CATHERBY }),
+
+    /**
+     * The willow trees south of Ardougne. Intended for mid-level woodcutters.
+     * - 13 willow trees
+     * - Normal trees
+     * - Oak trees
+     */
+    SOUTH_ARDOUGNE_WILLOWS(inside = Position(2654, 3241),
+                           area = SimpleBoxArea.of(2626, 3220, 2680, 3262),
+                           parent =
+                           { ARDOUGNE }),
+
+    /**
+     * The willow trees north of Ardougne, south of Hemenster. Intended for mid-level woodcutters.
+     * - 9 willow trees
+     * - Normal trees
+     * - Oak trees
+     */
+    NORTH_ARDOUGNE_WILLOWS(inside = Position(2627, 3401),
+                           area = SimpleBoxArea.of(2615, 3380, 2665, 3409),
+                           parent =
+                           { ARDOUGNE }),
+
+    /**
+     * The willow trees east of Ardougne, south of the Legends' Guild. Intended for mid-level woodcutters.
+     * - 16 willow trees
+     * - Normal trees
+     * - Oak trees
+     */
+    EAST_ARDOUGNE_WILLOWS(inside = Position(2711, 3309),
+                          area = SimpleBoxArea.of(2690, 3285, 2725, 3325),
+                          parent =
+                          { ARDOUGNE }),
+
+    /**
+     * The willow trees south of Yanille. Intended for mid-level woodcutters.
+     * - 5 willow trees
+     * - Normal trees
+     */
+    SOUTH_YANILLE_WILLOWS(inside = Position(2609, 3060),
+                          area = SimpleBoxArea.of(2598, 3048, 2622, 3070),
+                          parent =
+                          { YANILLE }),
+
+    /**
+     * The willow trees west of Draynor Village. Intended for dexterous willow trainers.
+     * - 4 willow trees
+     * - Normal trees
+     * - Oak trees
+     */
+    WEST_DRAYNOR_WILLOWS(inside = Position(3059, 3253),
+                         area = SimpleBoxArea.of(3050, 3244, 3072, 3262),
+                         parent =
+                         { DRAYNOR }),
+
+    /**
+     * The trees west of Varrock. Intended for low-level woodcutters.
+     * - Normal trees
+     * - Oak trees
+     */
+    WEST_VARROCK_TREES(inside = Position(3140, 3425),
+                       area = SimpleBoxArea.of(3110, 3395, 3170, 3455),
+                       parent =
+                       { VARROCK }),
+
+    /**
+     * The trees east of Edgeville. Intended for low-level woodcutters.
+     * - Normal trees
+     * - Oak trees
+     */
+    EAST_EDGEVILLE_TREES(inside = Position(3145, 3493),
+                         area = SimpleBoxArea.of(3100, 3460, 3170, 3518),
+                         parent =
+                         { EDGEVILLE }),
+
+    /**
      * The iconic barbarian village, intended for low-level combat training, crafting training, and low -> high level
      * drop-fishing training.
      * - Fly fishing spots
@@ -660,6 +861,67 @@ enum class SubZone(val inside: Position,
     LUMBRIDGE_COW_PEN(inside = Position(3257, 3279),
                       area = SimpleBoxArea.of(3240, 3253, 3265, 3298),
                       parent = { LUMBRIDGE }),
+
+    /**
+     * The gated cow field north of the Lumbridge windmill.
+     */
+    NORTH_LUMBRIDGE_COW_FIELD(inside = Position(3175, 3320),
+                              outside = { Position(3174, 3315) },
+                              area = SimpleBoxArea.of(3153, 3316, 3200, 3352),
+                              parent = { DRAYNOR }) {
+        private val gate = listOf(Position(3174, 3316), Position(3175, 3316))
+
+        override suspend fun enter(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return walkThroughGate(bot, gate, inside)
+        }
+
+        override suspend fun leave(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return !area.contains(bot) || walkThroughGate(bot, gate, selectedOutside ?: return false)
+        }
+    },
+
+    /**
+     * The gated cow field around the Crafting Guild.
+     */
+    CRAFTING_GUILD_COW_FIELD(inside = Position(2923, 3289),
+                             outside = { Position(2923, 3293) },
+                             area = SimpleBoxArea.of(2911, 3264, 2938, 3292),
+                             parent = { FALADOR }) {
+        private val gate = listOf(Position(2923, 3292), Position(2924, 3292))
+
+        override suspend fun enter(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return walkThroughGate(bot, gate, inside)
+        }
+
+        override suspend fun leave(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return !area.contains(bot) || walkThroughGate(bot, gate, selectedOutside ?: return false)
+        }
+    },
+
+    /**
+     * The gated cow field north of East Ardougne.
+     */
+    NORTH_ARDOUGNE_COW_FIELD(inside = Position(2671, 3349),
+                             outside = { Position(2676, 3349) },
+                             area = SimpleBoxArea.of(2642, 3340, 2675, 3359),
+                             parent = { ARDOUGNE }) {
+        private val gate = listOf(Position(2675, 3349), Position(2675, 3350))
+
+        override suspend fun enter(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return walkThroughGate(bot, gate, inside)
+        }
+
+        override suspend fun leave(bot: Bot, selectedParent: Zone, selectedOutside: Position?): Boolean {
+            return !area.contains(bot) || walkThroughGate(bot, gate, selectedOutside ?: return false)
+        }
+    },
+
+    /**
+     * The open cow field north of Yanille.
+     */
+    NORTH_YANILLE_COW_FIELD(inside = Position(2590, 3117),
+                            area = SimpleBoxArea.of(2576, 3111, 2608, 3126),
+                            parent = { YANILLE }),
 
     GREEN_DRAGONS(inside = Position(3141, 3690),
                   area = SimpleBoxArea.of(3120, 3690, 3155, 3721),
@@ -908,7 +1170,8 @@ enum class SubZone(val inside: Position,
     NORTH_FALADOR_CHAOS_TEMPLE(inside = Position(2934, 3515),
                                area = SimpleBoxArea.of(2929, 3511, 2942, 3519),
                                parent =
-                               { FALADOR });
+                               { FALADOR }),
+
     /*
      * TODO@0.5.0 Implement Mining Guild access and routing.
      *
@@ -917,13 +1180,7 @@ enum class SubZone(val inside: Position,
      */
 
     /*
-     * TODO@0.5.0 Implement KBD_LAIR.
-     *
-     * Planned definition:
-     * - inside = Position(2900, 3294)
-     * - outside = Position(3004, 3849)
-     * - area = SimpleBoxArea.of(2249, 4674, 2291, 4717)
-     * - parent = WILDERNESS
+     * King Black Dragon lair.
      *
      * Remaining work:
      * - Verify the inside/outside coordinates.
@@ -934,13 +1191,13 @@ enum class SubZone(val inside: Position,
      * - TODO@1.0 enter(): Implement wilderness dungeon + lever route into the KBD lair.
      * - TODO@1.0 leave(): Implement lever route out of the KBD lair.
      */
+    KBD_LAIR(inside = Position(2900, 3294),
+             outside = { Position(3004, 3849) },
+             area = SimpleBoxArea.of(2249, 4674, 2291, 4717),
+             parent = { WILDERNESS }),
 
     /*
-     * TODO@0.5.0 Implement LVL_20_WILDERNESS_CHAOS_TEMPLE.
-     *
-     * Planned definition:
-     * - area = SimpleBoxArea.of(2929, 3511, 2942, 3519)
-     * - parent = EDGEVILLE
+     * Level 20 Wilderness chaos temple.
      *
      * Used for:
      * - Telegrabbing wines money-making method.
@@ -948,13 +1205,17 @@ enum class SubZone(val inside: Position,
      * Remaining work:
      * - Determine whether this subzone needs inside, outside, or both.
      */
+    LVL_20_WILDERNESS_CHAOS_TEMPLE(inside = Position(3239, 3619),
+                                   area = SimpleBoxArea.ofRadius(3221, 3590, 38, 44),
+                                   parent = { EDGEVILLE }),
 
     /*
-     * TODO@0.5.0 Implement LVL_40_WILDERNESS_CHAOS_TEMPLE.
-     *
-     * Planned definition:
-     * - area = SimpleBoxArea.of(2929, 3511, 2942, 3519)
-     * - parent = EDGEVILLE
+
+
+     */
+
+    /*
+     * Level 40 Wilderness chaos temple.
      *
      * Used for:
      * - Telegrabbing wines money-making method.
@@ -962,6 +1223,9 @@ enum class SubZone(val inside: Position,
      * Remaining work:
      * - Determine whether this subzone needs inside, outside, or both.
      */
+    LVL_40_WILDERNESS_CHAOS_TEMPLE(inside = Position(2956, 3820),
+                                   area = SimpleBoxArea.ofRadius(2946, 3813, 13, 14),
+                                   parent = { EDGEVILLE });
 
     companion object {
 
@@ -984,70 +1248,25 @@ enum class SubZone(val inside: Position,
         }
 
         /**
-         * Describes a rectangular overlap between two subzone areas.
+         * Opens the gate on [gateTiles] if it's closed, then walks [bot] to [destination].
          *
-         * @property first The first overlapping subzone.
-         * @property second The second overlapping subzone.
-         * @property southWest The inclusive south-west corner of the overlap.
-         * @property northEast The inclusive north-east corner of the overlap.
+         * @param bot The bot passing through the gate.
+         * @param gateTiles The tiles the closed gate stands on.
+         * @param destination Where the bot should end up on the other side.
+         * @return `true` if the bot reached [destination].
          */
-        private data class AreaOverlap(
-            val first: SubZone,
-            val second: SubZone,
-            val southWest: Position,
-            val northEast: Position
-        )
-
-        /**
-         * Validates that no two subzone rectangles overlap.
-         *
-         * This is useful as a startup assertion or test helper. Overlaps are not automatically resolved because the
-         * correct fix depends on the intended gameplay area.
-         *
-         * @throws IllegalStateException If any two subzones overlap.
-         */
-        fun findAreaOverlaps() {
-            for (firstIndex in 0 until entries.size) {
-                val first = entries[firstIndex]
-
-                for (secondIndex in firstIndex + 1 until entries.size) {
-                    val second = entries[secondIndex]
-                    val overlap = findOverlap(first, second) ?: continue
-
-                    throw IllegalStateException("${overlap.first} overlaps ${overlap.second} at " +
-                                                        "SW=${overlap.southWest}, NE=${overlap.northEast}")
-                }
+        suspend fun walkThroughGate(bot: Bot, gateTiles: List<Position>, destination: Position): Boolean {
+            val gate = gateTiles.firstNotNullOfOrNull { tile ->
+                world.locator.findObjectsOnTile(tile) { "Open" in it.def().actions }.firstOrNull()
             }
-        }
+            if (gate != null) {
+                // Ignore a failed click: someone else may have opened the gate first.
+                bot.actionHandler.interactions.interact(gate.def().actions.indexOf("Open") + 1, gate)
 
-        /**
-         * Finds the rectangular overlap between two subzones.
-         *
-         * @param first The first subzone to compare.
-         * @param second The second subzone to compare.
-         * @return The overlap details, or `null` if the areas do not overlap.
-         */
-        private fun findOverlap(first: SubZone, second: SubZone): AreaOverlap? {
-            val firstSouthWest = first.area.southWest
-            val firstNorthEast = first.area.northEast
-            val secondSouthWest = second.area.southWest
-            val secondNorthEast = second.area.northEast
-
-            val overlapSouthWestX = maxOf(firstSouthWest.x, secondSouthWest.x)
-            val overlapSouthWestY = maxOf(firstSouthWest.y, secondSouthWest.y)
-            val overlapNorthEastX = minOf(firstNorthEast.x, secondNorthEast.x)
-            val overlapNorthEastY = minOf(firstNorthEast.y, secondNorthEast.y)
-
-            if (overlapSouthWestX > overlapNorthEastX || overlapSouthWestY > overlapNorthEastY) {
-                return null
+                // The gate opens on a later tick, and pathing before then finds no way through.
+                waitFor(3.seconds) { gate.state != EntityState.ACTIVE }
             }
-
-            return AreaOverlap(
-                first = first,
-                second = second,
-                southWest = Position(overlapSouthWestX, overlapSouthWestY),
-                northEast = Position(overlapNorthEastX, overlapNorthEastY)
-            )
+            return bot.navigator.navigate(destination, true).await() == NavigationResult.REACHED
         }
 
         /**
@@ -1064,20 +1283,20 @@ enum class SubZone(val inside: Position,
         }
 
         /**
-         * Updates the bot's current subzone from its cached local subzones.
+         * Updates the bot's current subzones from its cached local subzones.
          *
-         * The bot is assigned the first local subzone whose [SubZone.area] contains it. If no local subzone contains
-         * the bot, [Bot.subZone] is cleared.
+         * [Bot.subZones] contains every cached local subzone whose [SubZone.area] contains the bot.
+         * The set is empty when no local subzone contains the bot.
          *
          * @param bot The bot whose current subzone is being updated.
          */
         fun updateSubZone(bot: Bot) {
-            bot.subZone = null
-            if (bot.localSubZones.isNotEmpty()) {
+            // TODO Is there a way to do this where it doesn't have to be recalculated every step?
+            bot.subZones.clear()
+            if(bot.localSubZones.isNotEmpty()) {
                 for (zone in bot.localSubZones) {
                     if (bot in zone.area) {
-                        bot.subZone = zone
-                        break
+                        bot.subZones.add(zone)
                     }
                 }
             }
@@ -1153,7 +1372,7 @@ enum class SubZone(val inside: Position,
      * @return `true` if [bot] is within [distance] of [inside] or [outside].
      */
     fun isWithinDistance(bot: Bot, distance: Int): Boolean {
-        if (bot.subZone == this || inside.isWithinDistance(bot, distance)) {
+        if (this in bot.subZones || inside.isWithinDistance(bot, distance)) {
             return true
         }
         val outsidePosition = outside(bot)

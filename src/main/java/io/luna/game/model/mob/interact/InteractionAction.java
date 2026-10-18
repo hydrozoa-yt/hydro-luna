@@ -15,6 +15,8 @@ import io.luna.game.model.Position;
 import io.luna.game.model.collision.CollisionManager;
 import io.luna.game.model.mob.Mob;
 import io.luna.game.model.mob.Player;
+import io.luna.game.model.object.GameObject;
+import io.luna.game.model.object.ObjectType;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -156,6 +158,11 @@ public final class InteractionAction extends Action<Player> {
      */
     @Override
     public boolean run() {
+        if (listeners.isEmpty()) {
+            mob.sendMessage("Nothing interesting happens.");
+            return true;
+        }
+
         CollisionManager collisionManager = mob.getWorld().getCollisionManager();
 
         InteractionPolicy trigger = null;
@@ -192,11 +199,7 @@ public final class InteractionAction extends Action<Player> {
             }
             onStanding();
             return true;
-        } else if (listeners.isEmpty()) {
-            mob.sendMessage("Nothing interesting happens.");
-            return true;
-        }
-        return false;
+        } else return listeners.isEmpty();
     }
 
     /**
@@ -240,6 +243,10 @@ public final class InteractionAction extends Action<Player> {
      */
     private boolean moveBeforeInteract(boolean isMob, InteractionPolicy trigger) {
         boolean moved = false;
+        if (target instanceof GameObject && ((GameObject) target).getObjectType().getId() < ObjectType.DEFAULT.getId()) {
+            // Walls and wall decorations can be used from their own tile, so there's nothing to correct.
+            return false;
+        }
         if ((isMob || mob.isBot() || target.size() == 1) && trigger.getType() == InteractionType.SIZE &&
                 trigger.getDistance() == 1) {
             if (mob.getStatus().isImmobilized()) {

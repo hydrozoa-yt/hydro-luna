@@ -88,20 +88,16 @@ class SkillingCoordinator(private val training: Boolean) : BotCoordinator {
         FiremakingScriptFactory,
         FletchingScriptFactory,
         CraftingScriptFactory,
+        HerbloreScriptFactory,
         SmithingScriptFactory,
         CookingScriptFactory,
         FishingScriptFactory,
-        RunecraftingScriptFactory
+        MagicScriptFactory,
+        RunecraftingScriptFactory,
+        PrayerScriptFactory,
+        AgilityScriptFactory
     ).associateBy { it.skillId }
 
-    /**
-     * Selects and starts a skilling script for [bot].
-     *
-     * The selected skill is chosen using weighted odds. If the selected skill does not have a supported factory, a
-     * random supported factory is used as a fallback.
-     *
-     * @param bot The bot that will perform the skilling activity.
-     */
     override fun accept(bot: Bot) {
         val weights = HashMap<Int, Double>()
 
